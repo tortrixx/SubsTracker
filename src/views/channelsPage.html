@@ -66,13 +66,21 @@
             <span class="tz-chip"><i class="fas fa-globe-asia"></i><span id="policyTz">时区加载中…</span><a href="/admin/config">去设置修改</a></span>
             <span class="st-caption" id="hoursNow"></span>
             <span style="flex:1"></span>
-            <span class="st-hour-presets" id="hoursPresets" role="group" aria-label="时段预设">
-              <button type="button" class="st-hour-preset" data-preset="all">全天</button>
-              <button type="button" class="st-hour-preset" data-preset="day">白天 08–22</button>
-              <button type="button" class="st-hour-preset" data-preset="night">夜间 22–08</button>
+            <span class="st-seg" role="group" aria-label="发送时段模式">
+              <button type="button" class="st-seg-btn" id="segHoursAll">全天</button>
+              <button type="button" class="st-seg-btn" id="segHoursRange">仅在时段内</button>
             </span>
           </div>
-          <div class="st-hours" id="hoursPicker" style="margin-top:12px"></div>
+          <div class="st-range-row" id="hoursRangeRow" style="display:none">
+            <span>仅在</span>
+            <select class="st-time-select" id="hourStartSel" aria-label="开始时间"></select>
+            <span class="st-range-dash">—</span>
+            <select class="st-time-select" id="hourEndSel" aria-label="结束时间"></select>
+            <span>之间发送</span>
+            <span class="st-wrap-badge" id="hourWrapBadge" style="display:none">跨夜 · 到次日</span>
+          </div>
+          <button type="button" class="st-adv-toggle" id="hoursAdvToggle">需要不连续的时段？逐小时选择</button>
+          <div class="st-hours" id="hoursPicker" style="margin-top:12px; display:none"></div>
           <div class="hours-invalid" id="hoursInvalid" style="display:none"></div>
           <p class="st-caption" id="hoursSummary" style="margin-top:8px"></p>
           <div class="st-alert st-alert--error" id="hoursError" style="display:none"></div>
@@ -433,10 +441,61 @@
         inv.innerHTML = '';
       }
       updateHoursSummary();
+      renderHoursMode();
+    }
+    function pad2(h) { return String(h).padStart(2, '0'); }
+    /* 连续时段判定：集合恰好构成一段圆弧（含跨夜）时返回 {start, end(不含), count}，否则 null。
+       全天（all）与空集不在此列——后端语义里空集即不限制。 */
+    function arcForState(st) {
+      if (st.all) return null;
+      var keys = Object.keys(st.set).map(Number);
+      if (keys.length === 0 || keys.length >= 24) return null;
+      var start = -1;
+      for (var i = 0; i < keys.length; i++) {
+        if (!st.set[(keys[i] + 23) % 24]) { start = keys[i]; break; }
+      }
+      if (start < 0) return null;
+      var walked = 0, h = start, last = start;
+      while (st.set[h] && walked <= 24) { walked++; last = h; h = (h + 1) % 24; }
+      if (walked !== keys.length) return null;
+      return { start: start, end: (last + 1) % 24, count: walked };
+    }
+    var hoursAdvOpen = false;
+    /* 形态层：后端存的仍是小时集合，这里只决定用哪种控件呈现它——
+       全天 → 分段左；连续时段 → 分段右 + 两个时间下拉；不连续 → 逐小时筹码自动展开 */
+    function renderHoursMode() {
+      var st = currentHourState();
+      var arc = arcForState(st);
+      var mode = st.all ? 'all' : (arc ? 'range' : 'custom');
+      document.getElementById('segHoursAll').classList.toggle('is-active', mode === 'all');
+      document.getElementById('segHoursRange').classList.toggle('is-active', mode !== 'all');
+      document.getElementById('hoursRangeRow').style.display = mode === 'range' ? 'flex' : 'none';
+      if (arc) {
+        document.getElementById('hourStartSel').value = String(arc.start);
+        document.getElementById('hourEndSel').value = String(arc.end);
+        document.getElementById('hourWrapBadge').style.display = arc.end <= arc.start ? 'inline-block' : 'none';
+      }
+      var showPicker = hoursAdvOpen || mode === 'custom';
+      document.getElementById('hoursPicker').style.display = showPicker ? '' : 'none';
+      document.getElementById('hoursAdvToggle').textContent = mode === 'custom'
+        ? '逐小时选择（当前是不连续时段）'
+        : (showPicker ? '收起逐小时选择' : '需要不连续的时段？逐小时选择');
+    }
+    function tokensForArc(start, end) {
+      if (start === end) return []; /* 起止相同 = 整整 24 小时，即不限制 */
+      var tokens = [], h = start;
+      while (h !== end) { tokens.push(pad2(h)); h = (h + 1) % 24; }
+      return tokens;
+    }
+    function applyHoursTokens(tokens) {
+      var full = tokens.concat(hoursInvalidTokens);
+      var cfg = ST.config || (ST.config = {});
+      cfg.NOTIFICATION_HOURS = full;
+      renderHours();
+      saveHours(full.slice());
     }
     function updateHoursSummary() {
       var st = currentHourState();
-      syncPresetHighlight(st);
       var summary = document.getElementById('hoursSummary');
       var nowEl = document.getElementById('hoursNow');
       var tz = ST.tz();
@@ -446,12 +505,15 @@
       if (hh === '24') hh = '00';
       var cur = parseInt(hh, 10);
       var inWindow = st.all || !!st.set[cur];
+      var arc = arcForState(st);
       if (st.all) {
-        summary.textContent = '未限制时段：每个整点检查时都可以发送。点选具体小时可改为仅在所选时段发送。';
+        summary.textContent = '未限制时段：每个整点检查时都可以发送。';
+      } else if (arc) {
+        summary.textContent = '将只在 ' + pad2(arc.start) + ':00 – ' + pad2(arc.end) + ':00 之间发送（共 ' + arc.count + ' 个整点' + (arc.end <= arc.start ? '，跨夜到次日' : '') + '）。其余整点不发送。';
       } else {
         var list = Object.keys(st.set).map(Number).sort(function(a, b) { return a - b; })
-          .map(function(h) { return String(h).padStart(2, '0'); }).join('、');
-        summary.textContent = '仅在所选整点发送：' + list + '（' + tz + '）。其余时间调度会正常跳过、不发送。';
+          .map(function(h) { return pad2(h); }).join('、');
+        summary.textContent = '自定义时段（不连续）：仅在 ' + list + ' 点发送（' + tz + '）。其余整点不发送。';
       }
       nowEl.textContent = '现在 ' + hh + ':' + mm + '（' + tz + '）· ' + (inWindow ? '在发送时段内' : '不在发送时段内，将正常跳过');
       document.getElementById('policyTz').textContent = '时区 ' + tz;
@@ -469,36 +531,6 @@
         errEl.style.display = 'block';
         renderHours();
       }
-    }
-    var HOUR_PRESETS = {
-      all: null,
-      day: [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-      night: [22, 23, 0, 1, 2, 3, 4, 5, 6, 7]
-    };
-    function presetNameForState(st) {
-      if (st.all) return 'all';
-      var keys = Object.keys(st.set).map(Number).sort(function(a, b) { return a - b; });
-      for (var name in HOUR_PRESETS) {
-        var p = HOUR_PRESETS[name];
-        if (!p) continue;
-        var sorted = p.slice().sort(function(a, b) { return a - b; });
-        if (sorted.length === keys.length && sorted.every(function(h, i) { return h === keys[i]; })) return name;
-      }
-      return '';
-    }
-    function syncPresetHighlight(st) {
-      var cur = presetNameForState(st);
-      document.querySelectorAll('#hoursPresets .st-hour-preset').forEach(function(b) {
-        b.classList.toggle('is-active', b.getAttribute('data-preset') === cur);
-      });
-    }
-    function applyHourPreset(name) {
-      var p = HOUR_PRESETS[name];
-      var tokens = !p ? [] : p.map(function(h) { return String(h).padStart(2, '0'); }).concat(hoursInvalidTokens);
-      var cfg = ST.config || (ST.config = {});
-      cfg.NOTIFICATION_HOURS = tokens;
-      renderHours();
-      saveHours(tokens.slice());
     }
     function tokensFromState(st) {
       if (st.all) return [];
@@ -832,12 +864,31 @@
       } catch (e) {
         return; /* 门禁错误横幅由 ST 呈现，禁止按错误时区渲染 */
       }
+      ['hourStartSel', 'hourEndSel'].forEach(function(id) {
+        var sel = document.getElementById(id);
+        for (var h = 0; h < 24; h++) {
+          var opt = document.createElement('option');
+          opt.value = String(h);
+          opt.textContent = pad2(h) + ':00';
+          sel.appendChild(opt);
+        }
+        sel.addEventListener('change', function() {
+          applyHoursTokens(tokensForArc(
+            parseInt(document.getElementById('hourStartSel').value, 10),
+            parseInt(document.getElementById('hourEndSel').value, 10)));
+        });
+      });
+      document.getElementById('segHoursAll').addEventListener('click', function() { applyHoursTokens([]); });
+      document.getElementById('segHoursRange').addEventListener('click', function() {
+        var arc = arcForState(currentHourState()) || { start: 8, end: 22 };
+        applyHoursTokens(tokensForArc(arc.start, arc.end));
+      });
+      document.getElementById('hoursAdvToggle').addEventListener('click', function() {
+        hoursAdvOpen = !hoursAdvOpen;
+        renderHoursMode();
+      });
       renderHours();
       renderCards();
-      document.getElementById('hoursPresets').addEventListener('click', function(ev) {
-        var btn = ev.target.closest('.st-hour-preset');
-        if (btn) applyHourPreset(btn.getAttribute('data-preset'));
-      });
       refreshHealth();
       ST.CHANNELS.forEach(function(def) { fetchLast(def.name); });
       setInterval(updateHoursSummary, 30000);
