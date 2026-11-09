@@ -1,4 +1,5 @@
 import { getConfig, setConfig, type AppConfig } from '../../data/config.js';
+import { validateReminderRules, type ReminderRule } from '../../data/reminders.repo.js';
 import { generateRandomSecret, sanitizeNotificationHours } from '../utils.js';
 import type { AppEnv } from '../../platform/storage/storage-port.js';
 
@@ -91,6 +92,25 @@ async function handleUpdateConfig(request: Request, env: AppEnv): Promise<Respon
     const newConfig = (await request.json()) as Record<string, unknown>;
     const clearSecretFields = normalizeClearSecretFields(newConfig?.CLEAR_SECRET_FIELDS);
 
+    // 全局默认提醒规则：字段缺失 = 不修改；null = 清除配置（回退内置预设）；
+    // 数组（含空数组）= 新的默认模板，任一条非法则整请求 400 且不落库
+    let defaultReminderRules: ReminderRule[] | null = config.DEFAULT_REMINDER_RULES ?? null;
+    if ('DEFAULT_REMINDER_RULES' in newConfig) {
+      const rawRules = newConfig.DEFAULT_REMINDER_RULES;
+      if (rawRules === null) {
+        defaultReminderRules = null;
+      } else {
+        const checked = validateReminderRules(rawRules);
+        if (!checked.ok) {
+          return new Response(
+            JSON.stringify({ success: false, message: 'DEFAULT_REMINDER_RULES 非法: ' + checked.message }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        defaultReminderRules = checked.rules;
+      }
+    }
+
     const updatedConfig = {
       ...config,
       ADMIN_USERNAME: newConfig.ADMIN_USERNAME || config.ADMIN_USERNAME,
@@ -143,6 +163,7 @@ async function handleUpdateConfig(request: Request, env: AppEnv): Promise<Respon
 
       ENABLED_NOTIFIERS: newConfig.ENABLED_NOTIFIERS || ['notifyx'],
       TIMEZONE: newConfig.TIMEZONE || config.TIMEZONE || 'UTC',
+      DEFAULT_REMINDER_RULES: defaultReminderRules,
 
       THIRD_PARTY_API_TOKEN: mergeSecretField(config, newConfig, 'THIRD_PARTY_API_TOKEN', clearSecretFields),
 

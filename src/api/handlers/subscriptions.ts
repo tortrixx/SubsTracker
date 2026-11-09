@@ -138,9 +138,11 @@ async function handleSubscriptions(request: Request, env: AppEnv, path: string):
           const incoming = Array.isArray(subscription.reminderRules)
             ? subscription.reminderRules
             : null;
+          // 未提供规则（或空数组）时套默认：优先全局配置 DEFAULT_REMINDER_RULES，
+          // 未配置则由 resolveDefaultRules 回退内置预设（行为与历史一致）
           const rules = incoming && incoming.length > 0
             ? incoming.map(remindersRepo.normalizeRule)
-            : remindersRepo.defaultPresetRules();
+            : remindersRepo.resolveDefaultRules(await getConfig(env));
           await remindersRepo.replaceForSubscription(env, result.subscription.id, rules);
           await syncLegacyReminderFields(env, result.subscription.id, rules);
         } catch (err) {

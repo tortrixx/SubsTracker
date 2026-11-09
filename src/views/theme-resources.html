@@ -690,16 +690,27 @@
   .st-secret-state.is-clear { background: var(--tone-danger-bg); color: var(--tone-danger-text); box-shadow: inset 0 0 0 1px var(--tone-danger-ring); }
 
   /* === HourPicker（24 枚小时 Chips） === */
-  .st-hours { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
-  @media (max-width: 480px) { .st-hours { grid-template-columns: repeat(6, 1fr); } }
+  .st-hours { display: grid; grid-template-columns: repeat(12, 1fr); gap: 5px; }
+  @media (max-width: 900px) { .st-hours { grid-template-columns: repeat(8, 1fr); } }
+  @media (max-width: 560px) { .st-hours { grid-template-columns: repeat(6, 1fr); } }
   .st-hour {
-    min-height: 36px; border-radius: var(--radius-s); border: 1px solid var(--hairline);
+    min-height: 32px; border-radius: var(--radius-s); border: 1px solid var(--hairline);
     background: var(--surface-tint); color: var(--text-muted);
     font-size: var(--fs-sm); font-weight: 600; font-variant-numeric: tabular-nums; cursor: pointer;
     transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
   }
   .st-hour:hover { border-color: var(--hairline-strong); color: var(--text-main); }
-  .st-hour.is-on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .st-hour.is-on { background: rgba(0, 113, 227, 0.12); border-color: rgba(0, 113, 227, 0.45); color: #0060C9; }
+  html.dark .st-hour.is-on { background: rgba(41, 151, 255, 0.16); border-color: rgba(41, 151, 255, 0.5); color: #2997FF; }
+  .st-hour-presets { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .st-hour-preset {
+    min-height: 28px; padding: 3px 12px; border-radius: 999px; border: 1px solid var(--hairline);
+    background: transparent; color: var(--text-muted); font-size: var(--fs-xs); font-weight: 600; cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+  }
+  .st-hour-preset:hover { border-color: var(--hairline-strong); color: var(--text-main); }
+  .st-hour-preset.is-active { background: rgba(0, 113, 227, 0.12); border-color: rgba(0, 113, 227, 0.45); color: #0060C9; }
+  html.dark .st-hour-preset.is-active { background: rgba(41, 151, 255, 0.16); border-color: rgba(41, 151, 255, 0.5); color: #2997FF; }
   .st-hour.is-invalid { border-color: var(--tone-danger-text); color: var(--tone-danger-text); background: var(--tone-danger-bg); }
   .st-hours.is-disabled { opacity: 0.5; pointer-events: none; }
 

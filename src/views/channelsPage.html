@@ -65,6 +65,12 @@
             <span class="policy-label"><i class="fas fa-clock" style="margin-right:6px"></i>发送时段</span>
             <span class="tz-chip"><i class="fas fa-globe-asia"></i><span id="policyTz">时区加载中…</span><a href="/admin/config">去设置修改</a></span>
             <span class="st-caption" id="hoursNow"></span>
+            <span style="flex:1"></span>
+            <span class="st-hour-presets" id="hoursPresets" role="group" aria-label="时段预设">
+              <button type="button" class="st-hour-preset" data-preset="all">全天</button>
+              <button type="button" class="st-hour-preset" data-preset="day">白天 08–22</button>
+              <button type="button" class="st-hour-preset" data-preset="night">夜间 22–08</button>
+            </span>
           </div>
           <div class="st-hours" id="hoursPicker" style="margin-top:12px"></div>
           <div class="hours-invalid" id="hoursInvalid" style="display:none"></div>
@@ -430,6 +436,7 @@
     }
     function updateHoursSummary() {
       var st = currentHourState();
+      syncPresetHighlight(st);
       var summary = document.getElementById('hoursSummary');
       var nowEl = document.getElementById('hoursNow');
       var tz = ST.tz();
@@ -462,6 +469,36 @@
         errEl.style.display = 'block';
         renderHours();
       }
+    }
+    var HOUR_PRESETS = {
+      all: null,
+      day: [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+      night: [22, 23, 0, 1, 2, 3, 4, 5, 6, 7]
+    };
+    function presetNameForState(st) {
+      if (st.all) return 'all';
+      var keys = Object.keys(st.set).map(Number).sort(function(a, b) { return a - b; });
+      for (var name in HOUR_PRESETS) {
+        var p = HOUR_PRESETS[name];
+        if (!p) continue;
+        var sorted = p.slice().sort(function(a, b) { return a - b; });
+        if (sorted.length === keys.length && sorted.every(function(h, i) { return h === keys[i]; })) return name;
+      }
+      return '';
+    }
+    function syncPresetHighlight(st) {
+      var cur = presetNameForState(st);
+      document.querySelectorAll('#hoursPresets .st-hour-preset').forEach(function(b) {
+        b.classList.toggle('is-active', b.getAttribute('data-preset') === cur);
+      });
+    }
+    function applyHourPreset(name) {
+      var p = HOUR_PRESETS[name];
+      var tokens = !p ? [] : p.map(function(h) { return String(h).padStart(2, '0'); }).concat(hoursInvalidTokens);
+      var cfg = ST.config || (ST.config = {});
+      cfg.NOTIFICATION_HOURS = tokens;
+      renderHours();
+      saveHours(tokens.slice());
     }
     function tokensFromState(st) {
       if (st.all) return [];
@@ -797,6 +834,10 @@
       }
       renderHours();
       renderCards();
+      document.getElementById('hoursPresets').addEventListener('click', function(ev) {
+        var btn = ev.target.closest('.st-hour-preset');
+        if (btn) applyHourPreset(btn.getAttribute('data-preset'));
+      });
       refreshHealth();
       ST.CHANNELS.forEach(function(def) { fetchLast(def.name); });
       setInterval(updateHoursSummary, 30000);

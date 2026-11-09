@@ -26,7 +26,24 @@
     .secret-row { display: flex; gap: var(--sp-2); align-items: center; }
     .secret-row .st-input { flex: 1; min-width: 0; }
     .field-label-row { display: flex; align-items: center; gap: var(--sp-2); }
-    .rule-list { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+    /* 全局默认规则编辑器（与订阅页规则编辑器同构，样式在本页内自带） */
+    .rules-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-2); }
+    .rules-head .rules-spacer { flex: 1; }
+    .rule-row {
+      display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2);
+      border: 1px solid var(--hairline); border-radius: var(--radius-m);
+      background: var(--surface-tint); padding: var(--sp-2); margin-bottom: var(--sp-2);
+    }
+    .rule-row.is-error { border-color: var(--tone-danger-text); box-shadow: 0 0 0 3px var(--tone-danger-bg); }
+    .rule-row select, .rule-row input[type="number"] { min-height: 40px; padding: 6px 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-s); background: var(--surface); color: var(--text-main); font-size: var(--fs-sm); }
+    .rule-row .r-value { width: 76px; }
+    .rule-row .r-repeat { width: 76px; }
+    .rule-row .r-del { margin-left: auto; }
+    .rule-row .lunar-label { display: flex; align-items: center; gap: var(--sp-2); min-height: 40px; cursor: pointer; font-size: var(--fs-sm); font-weight: 500; color: var(--text-main); }
+    .rule-row .lunar-label input { width: 18px; height: 18px; accent-color: var(--accent); }
+    .rule-err { flex-basis: 100%; font-size: var(--fs-xs); color: var(--tone-danger-text); display: none; }
+    .rule-row.is-error .rule-err { display: block; }
+    .rules-empty { font-size: var(--fs-sm); color: var(--text-muted); border: 1px dashed var(--hairline-strong); border-radius: var(--radius-m); padding: var(--sp-3); line-height: 1.6; }
     .readonly-line { font-size: var(--fs-sm); color: var(--text-main); line-height: 1.6; }
     .readonly-line a { color: var(--accent); text-decoration: none; font-weight: 600; }
     .radio-row, .check-row { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-main); padding: 4px 0; cursor: pointer; }
@@ -80,9 +97,16 @@
           </div>
 
           <div class="st-field">
-            <span class="st-field-label">全局默认提醒规则</span>
-            <div class="rule-list" id="defaultRules"></div>
-            <p class="st-field-hint">新订阅未单独设置规则时，系统自动套用以上预设；每个订阅可在订阅页单独定制。此预设为系统内置，暂不支持在此修改。</p>
+            <div class="rules-head">
+              <span class="st-field-label">全局默认提醒规则</span>
+              <span class="st-badge st-info" id="defaultRulesBadge" style="display:none">使用系统预设</span>
+              <span class="rules-spacer"></span>
+              <button type="button" class="st-btn st-btn--ghost st-btn--sm" id="defaultRulesResetBtn">恢复系统预设</button>
+              <button type="button" class="st-btn st-btn--ghost st-btn--sm" id="defaultRulesAddBtn"><i class="fas fa-plus"></i>添加规则</button>
+            </div>
+            <div id="defaultRulesEditor"></div>
+            <p class="st-field-hint" id="defaultRulesNote" style="display:none">当前使用系统预设，保存后即成为你的默认规则。</p>
+            <p class="st-field-hint">新建订阅未单独设置规则时，自动套用这里的默认规则；已存在的订阅不受影响。</p>
           </div>
 
           <div class="st-field">
@@ -389,17 +413,253 @@
       }
     }
 
-    /* ---------- 全局默认提醒规则（系统内置预设，只读呈现真实值） ---------- */
-    var DEFAULT_PRESET_RULES = [
-      { type: 'before_expiry', value: 7, unit: 'days' },
-      { type: 'before_expiry', value: 3, unit: 'days' },
-      { type: 'before_expiry', value: 1, unit: 'days' },
-      { type: 'on_expiry', value: 0, unit: 'days' }
+    /* ---------- 全局默认提醒规则编辑器（与订阅页抽屉规则编辑器同构） ----------
+       状态机：loading（骨架+禁存）→ ready / error（内联错误+重试+禁存）。
+       数据只进内存模型 defRulesState.model，不经隐藏字段灌入。
+       存储语义：config.DEFAULT_REMINDER_RULES 为数组（含空数组）= 用户已配置的默认规则；
+       为 null/缺失 = 未配置，编辑器呈现系统预设（提前 7/3/1 天+当天）并标注，
+       保存时仅当规则相对基线有改动才提交该字段（缺失=不改），
+       避免只改时区就把系统预设误存成用户规则。 */
+    var defRulesState = { status: 'loading', model: [], source: 'preset' };
+    var defRulesBaseline = null; /* 就绪时基线模型的 payload JSON 串 */
+    var DEF_RULE_TYPES = [
+      { value: 'before_expiry', label: '到期前' },
+      { value: 'on_expiry', label: '到期当天' },
+      { value: 'after_expiry', label: '到期后' }
     ];
-    function renderDefaultRules() {
-      document.getElementById('defaultRules').innerHTML = DEFAULT_PRESET_RULES
-        .map(function(r) { return ST.badge('info', ST.ruleSummary(r)); }).join('');
+    var DEF_RULE_UNITS = [
+      { value: 'days', label: '天' },
+      { value: 'hours', label: '小时' }
+    ];
+    var DEF_REPEAT_UNTIL = [
+      { value: 'renewed', label: '续费后停止' },
+      { value: 'acknowledged', label: '手动确认后停止' },
+      { value: 'never', label: '不停止' }
+    ];
+    function newRuleId() {
+      if (window.crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+      return 'rule-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
     }
+    /* 系统预设：与后端 defaultPresetRules 同构（提前 7/3/1 天 + 到期当天） */
+    function presetDefaultRules() {
+      var now = new Date().toISOString();
+      return [
+        { type: 'before_expiry', value: 7, unit: 'days' },
+        { type: 'before_expiry', value: 3, unit: 'days' },
+        { type: 'before_expiry', value: 1, unit: 'days' },
+        { type: 'on_expiry', value: 0, unit: 'days' }
+      ].map(function(r) {
+        return {
+          id: newRuleId(), type: r.type, value: r.value, unit: r.unit,
+          repeatInterval: null, repeatUntil: 'renewed', isEnabled: true, createdAt: now
+        };
+      });
+    }
+    function normalizeDefRule(r) {
+      return {
+        id: (r && typeof r.id === 'string' && r.id) ? r.id : newRuleId(),
+        type: ['before_expiry', 'on_expiry', 'after_expiry'].indexOf(r && r.type) >= 0 ? r.type : 'before_expiry',
+        value: r && r.value !== undefined && r.value !== null ? r.value : 0,
+        unit: r && r.unit === 'hours' ? 'hours' : 'days',
+        repeatInterval: r && r.repeatInterval != null ? r.repeatInterval : null,
+        repeatUntil: r && ['renewed', 'acknowledged', 'never'].indexOf(r.repeatUntil) >= 0 ? r.repeatUntil : 'renewed',
+        isEnabled: !r || r.isEnabled !== false,
+        createdAt: (r && typeof r.createdAt === 'string') ? r.createdAt : new Date().toISOString()
+      };
+    }
+    function defRulesToPayload(rules) {
+      return (rules || []).map(function(r) {
+        return {
+          id: r.id,
+          type: r.type,
+          value: r.type === 'on_expiry' ? 0 : Number(r.value),
+          unit: r.unit,
+          repeatInterval: r.type === 'after_expiry' ? Number(r.repeatInterval) : null,
+          repeatUntil: r.repeatUntil || 'renewed',
+          isEnabled: r.isEnabled !== false,
+          createdAt: r.createdAt || ''
+        };
+      });
+    }
+    function defRulesChanged() {
+      if (defRulesBaseline === null || defRulesState.status !== 'ready') return false;
+      return JSON.stringify(defRulesToPayload(defRulesState.model)) !== defRulesBaseline;
+    }
+    function defRuleRowHtml(rule, idx, errMsg) {
+      var isAfter = rule.type === 'after_expiry';
+      var isOn = rule.type === 'on_expiry';
+      var html = '<div class="rule-row' + (errMsg ? ' is-error' : '') + '" data-def-rule-idx="' + idx + '">' +
+        '<label class="lunar-label"><input type="checkbox" class="r-enabled"' + (rule.isEnabled ? ' checked' : '') + '><span>启用</span></label>' +
+        '<select class="r-type" aria-label="规则类型">' +
+          DEF_RULE_TYPES.map(function(t) { return '<option value="' + t.value + '"' + (rule.type === t.value ? ' selected' : '') + '>' + t.label + '</option>'; }).join('') +
+        '</select>' +
+        '<input type="number" class="r-value" aria-label="规则数值" value="' + ST.esc(String(rule.value)) + '" min="0" step="1"' + (isOn ? ' disabled' : '') + '>' +
+        '<select class="r-unit" aria-label="规则单位"' + (isOn ? ' disabled' : '') + '>' +
+          DEF_RULE_UNITS.map(function(u) { return '<option value="' + u.value + '"' + (rule.unit === u.value ? ' selected' : '') + '>' + u.label + '</option>'; }).join('') +
+        '</select>';
+      if (isAfter) {
+        html += '<span class="st-caption">每</span>' +
+          '<input type="number" class="r-repeat" aria-label="重复间隔（小时）" value="' + ST.esc(String(rule.repeatInterval == null ? 24 : rule.repeatInterval)) + '" min="1" step="1">' +
+          '<span class="st-caption">小时，直到</span>' +
+          '<select class="r-until" aria-label="重复停止条件">' +
+            DEF_REPEAT_UNTIL.map(function(u) { return '<option value="' + u.value + '"' + (rule.repeatUntil === u.value ? ' selected' : '') + '>' + u.label + '</option>'; }).join('') +
+          '</select>';
+      }
+      html += '<button type="button" class="st-icon-btn r-del" data-dract="del" aria-label="删除规则"><i class="fas fa-trash"></i></button>' +
+        '<div class="rule-err">' + ST.esc(errMsg || '') + '</div>' +
+      '</div>';
+      return html;
+    }
+    function refreshDefRulesSourceUi() {
+      var showPreset = defRulesState.status === 'ready' && defRulesState.source === 'preset' && !defRulesChanged();
+      var badge = document.getElementById('defaultRulesBadge');
+      var note = document.getElementById('defaultRulesNote');
+      /* 徽章用 style.display 切换：.st-badge 的 inline-flex 会压过 [hidden] 的 UA 规则（不用 hidden 属性） */
+      if (badge) badge.style.display = showPreset ? '' : 'none';
+      if (note) note.style.display = showPreset ? '' : 'none';
+    }
+    function refreshReminderSaveEnabled() {
+      var sec = document.querySelector('[data-group="reminder"]');
+      var btn = sec && sec.querySelector('[data-save]');
+      if (btn) btn.disabled = defRulesState.status !== 'ready';
+    }
+    function renderDefaultRulesEditor(errMap) {
+      var box = document.getElementById('defaultRulesEditor');
+      if (!box) return;
+      if (defRulesState.status === 'loading') {
+        box.innerHTML = '<div class="st-skel st-skel--row" style="height: 56px; margin-bottom: var(--sp-2);"></div>' +
+          '<div class="st-skel st-skel--row" style="height: 56px;"></div>' +
+          '<p class="st-caption" style="margin-top: var(--sp-2);">正在加载默认提醒规则…</p>';
+      } else if (defRulesState.status === 'error') {
+        box.innerHTML = '<div class="st-alert st-alert--error"><i class="fas fa-exclamation-circle"></i>' +
+          '<span>默认提醒规则加载失败，已禁止保存本组以免覆盖现有规则。</span>' +
+          '<button type="button" class="st-btn st-btn--danger st-btn--sm" data-dract="retry" style="margin-left: auto;">重试</button></div>';
+      } else if (!defRulesState.model.length) {
+        box.innerHTML = '<div class="rules-empty">当前没有默认提醒规则：<strong>新订阅将不带提醒规则</strong>，到期时不会发出任何通知。可点「添加规则」添加，或「恢复系统预设」回到系统预设。</div>';
+      } else {
+        box.innerHTML = defRulesState.model.map(function(r, i) { return defRuleRowHtml(r, i, errMap && errMap[i]); }).join('');
+      }
+      refreshDefRulesSourceUi();
+      refreshReminderSaveEnabled();
+      refreshGroupDirty('reminder');
+    }
+    /* 从 DOM 行同步回内存模型（输入即同步，模型是唯一数据源，与订阅页同构） */
+    function syncDefRulesFromDom() {
+      if (defRulesState.status !== 'ready') return;
+      var rows = document.getElementById('defaultRulesEditor').querySelectorAll('.rule-row');
+      var next = [];
+      rows.forEach(function(row) {
+        var idx = Number(row.getAttribute('data-def-rule-idx'));
+        var prev = defRulesState.model[idx] || {};
+        var type = row.querySelector('.r-type').value;
+        var valueEl = row.querySelector('.r-value');
+        var riEl = row.querySelector('.r-repeat');
+        var untilEl = row.querySelector('.r-until');
+        next.push({
+          id: prev.id || newRuleId(),
+          type: type,
+          value: valueEl ? valueEl.value : prev.value,
+          unit: row.querySelector('.r-unit').value,
+          repeatInterval: type === 'after_expiry' ? (riEl ? riEl.value : 24) : null,
+          repeatUntil: type === 'after_expiry' ? (untilEl ? untilEl.value : 'renewed') : (prev.repeatUntil || 'renewed'),
+          isEnabled: row.querySelector('.r-enabled').checked,
+          createdAt: prev.createdAt || new Date().toISOString()
+        });
+      });
+      if (next.length) defRulesState.model = next;
+    }
+    function validateDefRules() {
+      var errs = {};
+      var first = -1;
+      defRulesState.model.forEach(function(r, i) {
+        var msg = '';
+        if (r.type === 'before_expiry' || r.type === 'after_expiry') {
+          var raw = String(r.value).trim();
+          var v = Number(raw);
+          if (raw === '' || !Number.isInteger(v) || v < 0) msg = '数值须为不小于 0 的整数';
+        }
+        if (!msg && r.type === 'after_expiry') {
+          var rawRi = String(r.repeatInterval == null ? '' : r.repeatInterval).trim();
+          var ri = Number(rawRi);
+          if (rawRi === '' || !Number.isInteger(ri) || ri < 1) msg = '重复间隔须为不小于 1 的整数（小时）';
+        }
+        if (msg) { errs[i] = msg; if (first < 0) first = i; }
+      });
+      return { errs: errs, first: first };
+    }
+    function applyDefaultRules(cfg) {
+      var raw = cfg ? cfg.DEFAULT_REMINDER_RULES : undefined;
+      if (Array.isArray(raw)) {
+        defRulesState.model = raw.map(normalizeDefRule);
+        defRulesState.source = 'config';
+      } else {
+        defRulesState.model = presetDefaultRules();
+        defRulesState.source = 'preset';
+      }
+      defRulesState.status = 'ready';
+      defRulesBaseline = JSON.stringify(defRulesToPayload(defRulesState.model));
+      renderDefaultRulesEditor();
+    }
+    async function loadDefaultRules() {
+      defRulesState.status = 'loading';
+      renderDefaultRulesEditor();
+      try {
+        var cfg = await ST.loadConfig(true);
+        applyDefaultRules(cfg || {});
+      } catch (e) {
+        defRulesState.status = 'error';
+        renderDefaultRulesEditor();
+      }
+    }
+    /* 编辑器事件（容器委托，顶层绑定：初始化失败时重试按钮也可点） */
+    document.getElementById('defaultRulesEditor').addEventListener('click', function(e) {
+      var btn = e.target.closest('[data-dract]');
+      if (!btn) return;
+      var act = btn.getAttribute('data-dract');
+      if (act === 'retry') {
+        loadDefaultRules();
+      } else if (act === 'del') {
+        syncDefRulesFromDom();
+        var row = btn.closest('.rule-row');
+        var idx = Number(row.getAttribute('data-def-rule-idx'));
+        defRulesState.model.splice(idx, 1);
+        renderDefaultRulesEditor();
+      }
+    });
+    document.getElementById('defaultRulesEditor').addEventListener('change', function(e) {
+      syncDefRulesFromDom();
+      if (e.target.classList && e.target.classList.contains('r-type')) renderDefaultRulesEditor();
+      else { refreshDefRulesSourceUi(); refreshGroupDirty('reminder'); }
+    });
+    document.getElementById('defaultRulesEditor').addEventListener('input', function() {
+      syncDefRulesFromDom();
+      refreshDefRulesSourceUi();
+      refreshGroupDirty('reminder');
+    });
+    document.getElementById('defaultRulesAddBtn').addEventListener('click', function() {
+      if (defRulesState.status !== 'ready') return;
+      syncDefRulesFromDom();
+      defRulesState.model.push({
+        id: newRuleId(), type: 'before_expiry', value: 7, unit: 'days',
+        repeatInterval: null, repeatUntil: 'renewed', isEnabled: true, createdAt: new Date().toISOString()
+      });
+      renderDefaultRulesEditor();
+    });
+    document.getElementById('defaultRulesResetBtn').addEventListener('click', function() {
+      if (defRulesState.status !== 'ready') return;
+      syncDefRulesFromDom();
+      var snapshot = JSON.parse(JSON.stringify(defRulesState.model));
+      defRulesState.model = presetDefaultRules();
+      renderDefaultRulesEditor();
+      ST.toast('已恢复为系统预设（提前 7/3/1 天 + 到期当天），保存本组后生效', {
+        duration: 5000, actionLabel: '撤销',
+        onAction: function() {
+          defRulesState.model = snapshot;
+          renderDefaultRulesEditor();
+        }
+      });
+    });
+    renderDefaultRulesEditor();
     function renderHoursSummary() {
       var cfg = ST.config || {};
       var tokens = Array.isArray(cfg.NOTIFICATION_HOURS) ? cfg.NOTIFICATION_HOURS : [];
@@ -455,14 +715,32 @@
         collect: function() {
           return {
             TIMEZONE: document.getElementById('timezone').value,
-            SHOW_LUNAR: document.getElementById('showLunar').checked
+            SHOW_LUNAR: document.getElementById('showLunar').checked,
+            DEFAULT_REMINDER_RULES: defRulesToPayload(defRulesState.model)
           };
+        },
+        validate: function() {
+          if (defRulesState.status !== 'ready') return '默认提醒规则尚未加载完成（或加载失败），为避免覆盖现有规则，暂不能保存本组。';
+          var rv = validateDefRules();
+          if (rv.first >= 0) {
+            renderDefaultRulesEditor(rv.errs);
+            var row = document.querySelector('#defaultRulesEditor [data-def-rule-idx="' + rv.first + '"]');
+            if (row) { var inp = row.querySelector('.r-value, .r-repeat'); if (inp) { inp.focus(); inp.scrollIntoView({ block: 'center', behavior: 'smooth' }); } }
+            return '默认提醒规则中有填写错误，请按行内提示修正。';
+          }
+          return null;
         },
         buildPatch: function() {
           var v = this.collect();
-          return { patch: { TIMEZONE: v.TIMEZONE, SHOW_LUNAR: v.SHOW_LUNAR } };
+          var patch = { TIMEZONE: v.TIMEZONE, SHOW_LUNAR: v.SHOW_LUNAR };
+          /* 仅在规则相对基线有改动时提交（缺失=不改）：未配置时只改时区不会把系统预设误存成用户规则 */
+          if (defRulesChanged()) patch.DEFAULT_REMINDER_RULES = v.DEFAULT_REMINDER_RULES;
+          return { patch: patch };
         },
         afterSave: function() {
+          defRulesBaseline = JSON.stringify(defRulesToPayload(defRulesState.model));
+          if (Array.isArray((ST.config || {}).DEFAULT_REMINDER_RULES)) defRulesState.source = 'config';
+          renderDefaultRulesEditor();
           try { localStorage.setItem('timezoneUpdated', Date.now().toString()); } catch (e) {}
           renderHoursSummary();
           updateTzPreview();
@@ -621,6 +899,9 @@
       try {
         cfg = await ST.configReady;
       } catch (e) {
+        /* 编辑器同步置失败态（内联报错+重试+禁存），与门禁横幅并存 */
+        defRulesState.status = 'error';
+        renderDefaultRulesEditor();
         return; /* 门禁错误横幅由 ST 呈现；加载失败不渲染、不清空任何输入（#38） */
       }
       buildTimezoneOptions(cfg.TIMEZONE || 'Asia/Shanghai');
@@ -630,7 +911,7 @@
       syncThemeSeg();
       document.getElementById('appUrl').value = cfg.APP_URL || '';
       document.getElementById('paymentHistoryLimit').value = Number(cfg.PAYMENT_HISTORY_LIMIT) || 100;
-      renderDefaultRules();
+      applyDefaultRules(cfg);
       renderHoursSummary();
       refreshTokenState();
       updateTzPreview();

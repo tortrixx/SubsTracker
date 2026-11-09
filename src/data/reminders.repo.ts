@@ -57,6 +57,80 @@ export function defaultPresetRules(): ReminderRule[] {
   ];
 }
 
+const RULE_TYPES: readonly string[] = ['before_expiry', 'on_expiry', 'after_expiry'];
+const RULE_UNITS: readonly string[] = ['days', 'hours'];
+const RULE_REPEAT_UNTILS: readonly string[] = ['renewed', 'acknowledged', 'never'];
+
+/**
+ * 严格校验一条规则（字段域与 normalizeRule 完全一致，但非法即报错、不做回退修正）。
+ * 供「全局默认提醒规则」等配置入口使用：任一条非法则整组拒绝。
+ * 合法时返回 null，非法时返回错误信息。
+ */
+export function validateReminderRule(raw: unknown): string | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return '规则必须是对象';
+  }
+  const r = raw as Record<string, unknown>;
+  if (typeof r.type !== 'string' || !RULE_TYPES.includes(r.type)) {
+    return `规则 type 非法（须为 ${RULE_TYPES.join(' / ')}）`;
+  }
+  if (r.unit !== undefined && (typeof r.unit !== 'string' || !RULE_UNITS.includes(r.unit))) {
+    return `规则 unit 非法（须为 ${RULE_UNITS.join(' / ')}）`;
+  }
+  if (typeof r.value !== 'number' || !Number.isFinite(r.value) || r.value < 0) {
+    return '规则 value 必须是 ≥ 0 的有限数';
+  }
+  if (r.repeatInterval !== undefined && r.repeatInterval !== null) {
+    if (typeof r.repeatInterval !== 'number' || !Number.isFinite(r.repeatInterval) || r.repeatInterval <= 0) {
+      return '规则 repeatInterval 必须是 null 或 > 0 的有限数（小时）';
+    }
+  }
+  if (r.repeatUntil !== undefined && (typeof r.repeatUntil !== 'string' || !RULE_REPEAT_UNTILS.includes(r.repeatUntil))) {
+    return `规则 repeatUntil 非法（须为 ${RULE_REPEAT_UNTILS.join(' / ')}）`;
+  }
+  if (r.isEnabled !== undefined && typeof r.isEnabled !== 'boolean') {
+    return '规则 isEnabled 必须是布尔值';
+  }
+  if (r.id !== undefined && (typeof r.id !== 'string' || r.id === '')) {
+    return '规则 id 必须是非空字符串';
+  }
+  if (r.createdAt !== undefined && typeof r.createdAt !== 'string') {
+    return '规则 createdAt 必须是字符串';
+  }
+  return null;
+}
+
+/**
+ * 严格校验一组规则：全部合法时返回归一化后的规则数组，任一条非法返回错误信息。
+ */
+export function validateReminderRules(raw: unknown): { ok: true; rules: ReminderRule[] } | { ok: false; message: string } {
+  if (!Array.isArray(raw)) {
+    return { ok: false, message: '规则列表必须是数组' };
+  }
+  for (let i = 0; i < raw.length; i++) {
+    const err = validateReminderRule(raw[i]);
+    if (err) return { ok: false, message: `第 ${i + 1} 条${err}` };
+  }
+  return { ok: true, rules: raw.map(normalizeRule) };
+}
+
+/**
+ * 解析「新建订阅未提供规则时」应套用的默认规则：
+ * - 配置 DEFAULT_REMINDER_RULES 为数组（含空数组）→ 以其为模板逐条复制，
+ *   id / createdAt 重新生成（与 defaultPresetRules 一致，避免跨订阅 id 重复）；
+ * - 未配置（null / 非数组）→ 回退内置智能预设，行为与历史一致。
+ */
+export function resolveDefaultRules(config: { DEFAULT_REMINDER_RULES?: ReminderRule[] | null } | null | undefined): ReminderRule[] {
+  const configured = config?.DEFAULT_REMINDER_RULES;
+  if (Array.isArray(configured)) {
+    return configured.map((rule) => {
+      const { id: _id, createdAt: _createdAt, ...rest } = rule || ({} as ReminderRule);
+      return normalizeRule(rest);
+    });
+  }
+  return defaultPresetRules();
+}
+
 /**
  * 把旧的 reminderUnit/reminderValue 单点提醒转换为 1 条等价规则。
  *

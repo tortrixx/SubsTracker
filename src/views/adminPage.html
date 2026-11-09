@@ -971,7 +971,9 @@
     }
 
     function defaultRules() {
-      const cfgRules = (window.ST && ST.config && Array.isArray(ST.config.DEFAULT_REMINDER_RULES) && ST.config.DEFAULT_REMINDER_RULES.length)
+      /* 配置语义：DEFAULT_REMINDER_RULES 为数组（含空数组）= 用户已配置的默认规则，空数组即预填为空；
+         为 null/缺失 = 未配置，回退系统预设。此处不可加 .length 判断，否则明确清空会被误当未配置。 */
+      const cfgRules = (window.ST && ST.config && Array.isArray(ST.config.DEFAULT_REMINDER_RULES))
         ? ST.config.DEFAULT_REMINDER_RULES : null;
       const src = cfgRules || [
         { type: 'before_expiry', value: 7, unit: 'days' },

@@ -1,5 +1,6 @@
 import { getKVJson, putKVJson } from './kv.js';
 import type { AppEnv } from '../platform/storage/storage-port.js';
+import type { ReminderRule } from './reminders.repo.js';
 
 const DEFAULT_CONFIG = {
   ADMIN_USERNAME: 'admin',
@@ -29,6 +30,9 @@ const DEFAULT_CONFIG = {
   THEME_MODE: 'system',
   TIMEZONE: 'Asia/Shanghai',
   NOTIFICATION_HOURS: [] as string[],
+  // 全局默认提醒规则：null = 从未配置（新建订阅回退内置预设 7/3/1/当天）；
+  // 数组（含空数组）= 用户已配置的默认模板，空数组表示新订阅不带任何规则
+  DEFAULT_REMINDER_RULES: null as ReminderRule[] | null,
   THIRD_PARTY_API_TOKEN: '',
   DEBUG_LOGS: false,
   PAYMENT_HISTORY_LIMIT: 100,
