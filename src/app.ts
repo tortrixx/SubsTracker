@@ -67,11 +67,11 @@ app.onError((err, c) => {
 
 // ─────────────────────────────────────────────────────────────
 // 路由：根路径
-// 已登录跳 /admin；未登录返回登录页
+// 已登录跳概览页；未登录返回登录页
 // ─────────────────────────────────────────────────────────────
 app.get('/', async (c) => {
   const { user } = await getUserFromRequest(c.req.raw, c.env);
-  if (user) return c.redirect('/admin');
+  if (user) return c.redirect('/admin/dashboard');
   return handleLoginPage();
 });
 

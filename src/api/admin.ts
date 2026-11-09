@@ -1,7 +1,7 @@
 import { getConfig } from '../data/config.js';
 import { verifyJWT } from '../core/auth.js';
 import { getCookieValue } from './utils.js';
-import { loginPage, adminPage, configPage, dashboardPage, notifyLogsPage } from '../views/pages.js';
+import { loginPage, adminPage, configPage, channelsPage, dashboardPage, notifyLogsPage } from '../views/pages.js';
 import type { AppEnv } from '../platform/storage/storage-port.js';
 
 async function handleAdminRequest(request: Request, env: AppEnv): Promise<Response> {
@@ -30,6 +30,12 @@ async function handleAdminRequest(request: Request, env: AppEnv): Promise<Respon
 
     if (pathname === '/admin/config') {
       return new Response(configPage, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      });
+    }
+
+    if (pathname === '/admin/channels') {
+      return new Response(channelsPage, {
         headers: { 'Content-Type': 'text/html; charset=utf-8' }
       });
     }

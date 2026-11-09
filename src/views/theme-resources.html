@@ -1,13 +1,17 @@
 <style>
   /* ============================================================
-     SubsTracker 设计系统 v2 ——「Craft / Apple 玻璃」语言
-     原则（与 Astryx 中性体系互补，偏材质与活力感）：
-     - 玻璃只用于功能层：导航栏、弹窗遮罩、浮动提示；
-       内容层（卡片/表格/表单）保持实底、靠明度与阴影分层。
-     - 系统字体栈优先（SF Pro），圆角同心、发丝描边、柔和分层阴影。
-     - 动效 125ms / 300ms 两档；尊重减动效与减透明度偏好。
-     本文件是全站唯一的主题入口：浅色基线 + html.dark 深色覆盖，
-     页面只用 Tailwind 工具类与 .btn-* tokens，不再散落硬编码色。
+     SubsTracker 设计系统 v3 ——「Craft / Apple 玻璃」语言 + App Shell 契约层
+     沿革：v2.1 完成全站皮肤统一（玻璃功能层 + 明度分层 + 系统蓝）；
+     v3 在不推翻 v2.1 的前提下补齐三件事：
+       1) tokens 阶梯（圆角 6/10/12/16、字号、间距 4/8/12/16/24/32）；
+       2) .st-* 组件层（App Shell / HealthDot / 徽章 / 抽屉 / 弹窗 /
+          空状态 / 骨架 / 表单 / HourPicker / 分段 / Toast / 菜单等）；
+       3) 动效收敛为 125ms / 300ms 两档（shimmer 1.4s 为唯一循环例外）。
+     原则不变：玻璃只用于功能层（壳、导航、抽屉、弹窗、浮动提示）；
+     内容层（卡片/表格/表单）保持实底、靠明度与阴影分层；
+     页面私有色值禁止，颜色一律走变量。
+     本文件仍是全站唯一的主题入口：浅色基线 + html.dark 深色覆盖。
+     配套共享逻辑见文件末尾的 window.ST（契约见 substracker-redesign/CONTRACT.md）。
      ============================================================ */
   :root {
     --bg: #F5F5F7;
@@ -24,6 +28,52 @@
     --sh-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.05);
     --sh-pop: 0 4px 8px rgba(0, 0, 0, 0.06), 0 16px 40px rgba(0, 0, 0, 0.14);
     --ease: cubic-bezier(0.2, 0.6, 0.25, 1);
+    /* —— v3 tokens：圆角阶梯 —— */
+    --radius-s: 6px;
+    --radius-m: 10px;
+    --radius-l: 12px;
+    --radius-xl: 16px;
+    /* —— v3 tokens：字号阶梯 —— */
+    --fs-xs: 12px;
+    --fs-sm: 13px;
+    --fs-base: 15px;
+    --fs-lg: 17px;
+    --fs-xl: 20px;
+    --fs-2xl: 24px;
+    /* —— v3 tokens：间距阶梯 —— */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 24px;
+    --sp-6: 32px;
+    /* —— v3 tokens：动效两档 —— */
+    --dur-fast: 125ms;
+    --dur: 300ms;
+    /* —— v3 tokens：语义色（染色玻璃徽章/横幅共用；文字为加深变体保 4.5:1） —— */
+    --tone-ok-bg: rgba(52, 199, 89, 0.13);
+    --tone-ok-text: #177245;
+    --tone-ok-ring: rgba(52, 199, 89, 0.30);
+    --tone-warn-bg: rgba(255, 159, 10, 0.15);
+    --tone-warn-text: #9A6200;
+    --tone-warn-ring: rgba(255, 159, 10, 0.32);
+    --tone-danger-bg: rgba(255, 59, 48, 0.11);
+    --tone-danger-text: #C81E1D;
+    --tone-danger-ring: rgba(255, 59, 48, 0.28);
+    --tone-muted-bg: rgba(120, 120, 128, 0.14);
+    --tone-muted-text: #5B5B60;
+    --tone-muted-ring: rgba(120, 120, 128, 0.26);
+    --tone-info-bg: rgba(0, 122, 255, 0.11);
+    --tone-info-text: #0066CC;
+    --tone-info-ring: rgba(0, 122, 255, 0.26);
+    --tone-neutral-bg: var(--surface-tint);
+    --tone-neutral-text: var(--text-muted);
+    --tone-neutral-ring: var(--hairline);
+    /* —— v3 tokens：健康状态点 —— */
+    --dot-ok: #2FA84F;
+    --dot-warn: #D97E06;
+    --dot-danger: #E02B20;
+    --dot-unknown: #8E8E93;
   }
   html.dark {
     --bg: #0B1220;
@@ -44,6 +94,15 @@
     --dark-border: rgba(226, 232, 240, 0.12);
     --dark-text-main: #EDF1F7;
     --dark-text-muted: #9AA9C2;
+    --tone-ok-text: #4ADE80;
+    --tone-warn-text: #FBBF24;
+    --tone-danger-text: #F87171;
+    --tone-muted-text: #9AA9C2;
+    --tone-info-text: #7DD3FC;
+    --dot-ok: #4ADE80;
+    --dot-warn: #FBBF24;
+    --dot-danger: #F87171;
+    --dot-unknown: #64748B;
   }
 
   /* === 基线：字体、背景（环境光渐变固定铺底）、过渡 === */
@@ -150,6 +209,10 @@
      ============================================================ */
   html.dark body { background-color: var(--dark-bg-primary); color: var(--dark-text-muted); }
   html.dark body.bg-gray-100, html.dark body.bg-gray-50 {
+    /* 必须带 !important 且靠 body 限定提特异性：下方 html.dark .bg-gray-100 的
+       !important 浅染色（为普通小元素准备的深色映射）同样命中 body，
+       否则整页背景被 8% 近透明染色压住、透出白色画布。 */
+    background-color: var(--dark-bg-primary) !important;
     background-image:
       radial-gradient(1100px 520px at 85% -10%, rgba(41, 151, 255, 0.07), transparent 60%),
       radial-gradient(900px 480px at -10% 0%, rgba(175, 82, 222, 0.05), transparent 55%);
@@ -213,8 +276,8 @@
   html.dark ::-webkit-scrollbar-thumb { background: rgba(226, 232, 240, 0.20); border: 2px solid transparent; background-clip: content-box; }
 
   /* ============================================================
-     v2.1 动效系统与布局升级（大厂产品动线）
-     - 页面入场：内容区 8px 上浮淡入（380ms 内结束，不拖沓）
+     v2.1 动效系统与布局升级（时长已按 v3 两档制归一：125/300ms）
+     - 页面入场：内容区 8px 上浮淡入（300ms 内结束，不拖沓）
      - 弹窗：遮罩淡入 + 面板 0.98 缩放上浮（SwiftUI sheet 手感）
      - 工具栏/保存栏：粘性玻璃条，长列表与长表单里主操作常驻可达
      - 状态徽章：染色玻璃（tinted）替代实色块，深浅双适配
@@ -224,11 +287,11 @@
   @keyframes st-scale-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
   @keyframes st-fade-in { from { opacity: 0; } to { opacity: 1; } }
   @keyframes st-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
-  body > div.max-w-7xl { animation: st-fade-up 0.38s var(--ease) both; }
-  [id$="Modal"] { animation: st-fade-in 0.18s ease both; }
-  [id$="Modal"] > div { animation: st-scale-in 0.28s var(--ease) both; }
-  .custom-dropdown-list, .custom-date-picker { animation: st-scale-in 0.18s var(--ease) both; transform-origin: top center; }
-  #mobile-menu:not(.hidden) { animation: st-fade-in 0.18s ease both; }
+  body > div.max-w-7xl { animation: st-fade-up 0.3s var(--ease) both; }
+  [id$="Modal"] { animation: st-fade-in 0.3s ease both; }
+  [id$="Modal"] > div { animation: st-scale-in 0.3s var(--ease) both; }
+  .custom-dropdown-list, .custom-date-picker { animation: st-scale-in 0.125s var(--ease) both; transform-origin: top center; }
+  #mobile-menu:not(.hidden) { animation: st-fade-in 0.125s ease both; }
   .loading-skeleton { animation: st-shimmer 1.4s linear infinite; }
 
   /* 粘性玻璃工具栏（订阅列表：搜索/筛选/添加常驻可达） */
@@ -250,20 +313,18 @@
     padding: 8px 10px; box-shadow: var(--sh-pop);
   }
 
-  /* 状态徽章（染色玻璃语义色） */
-  .status-badge {
+  /* 状态徽章（染色玻璃语义色；.st-badge 为 v3 正名，.status-badge 为旧名别名） */
+  .status-badge, .st-badge {
     display: inline-flex; align-items: center;
     padding: 3px 9px; border-radius: 999px;
-    font-size: 12px; font-weight: 600; white-space: nowrap;
+    font-size: var(--fs-xs); font-weight: 600; white-space: nowrap;
   }
-  .st-ok { background: rgba(52, 199, 89, 0.13); color: #177245; box-shadow: inset 0 0 0 1px rgba(52, 199, 89, 0.30); }
-  .st-warn { background: rgba(255, 159, 10, 0.15); color: #9A6200; box-shadow: inset 0 0 0 1px rgba(255, 159, 10, 0.32); }
-  .st-danger { background: rgba(255, 59, 48, 0.11); color: #C81E1D; box-shadow: inset 0 0 0 1px rgba(255, 59, 48, 0.28); }
-  .st-muted { background: rgba(120, 120, 128, 0.14); color: #5B5B60; box-shadow: inset 0 0 0 1px rgba(120, 120, 128, 0.26); }
-  html.dark .st-ok { color: #4ADE80; }
-  html.dark .st-warn { color: #FBBF24; }
-  html.dark .st-danger { color: #F87171; }
-  html.dark .st-muted { color: #9AA9C2; }
+  .st-ok { background: var(--tone-ok-bg); color: var(--tone-ok-text); box-shadow: inset 0 0 0 1px var(--tone-ok-ring); }
+  .st-warn { background: var(--tone-warn-bg); color: var(--tone-warn-text); box-shadow: inset 0 0 0 1px var(--tone-warn-ring); }
+  .st-danger { background: var(--tone-danger-bg); color: var(--tone-danger-text); box-shadow: inset 0 0 0 1px var(--tone-danger-ring); }
+  .st-muted { background: var(--tone-muted-bg); color: var(--tone-muted-text); box-shadow: inset 0 0 0 1px var(--tone-muted-ring); }
+  .st-info { background: var(--tone-info-bg); color: var(--tone-info-text); box-shadow: inset 0 0 0 1px var(--tone-info-ring); }
+  .st-neutral { background: var(--tone-neutral-bg); color: var(--tone-neutral-text); box-shadow: inset 0 0 0 1px var(--tone-neutral-ring); }
 
   /* Toast：深色玻璃 + 语义色，入场由右滑改为轻移淡入 */
   #toast-container .toast {
@@ -293,7 +354,7 @@
   .focus\:border-indigo-500:focus { border-color: var(--accent) !important; }
 
   /* 仪表盘统计卡悬停抬升（仅 #statsGrid 作用域） */
-  #statsGrid > div { transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease); }
+  #statsGrid > div { transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease); }
   #statsGrid > div:hover { transform: translateY(-2px); box-shadow: var(--sh-pop); }
 
   @media (max-width: 767px) {   /* 移动端表格（高对比版，沿用原规则） */
@@ -312,6 +373,457 @@
     html.dark .responsive-table td { border-bottom-color: var(--dark-border) !important; }
     html.dark .td-content-wrapper { color: #F3F4F6; }
   }
+</style>
+<style>
+  /* ============================================================
+     v3 组件层（.st-*）——后续页面只许组合本层组件，禁止私有色值/私有时长。
+     动效只有两档：var(--dur-fast)=125ms（反馈/开合）、var(--dur)=300ms
+     （抽屉/弹窗/入场/淡变）；shimmer 1.4s 是唯一允许的循环动画。
+     ============================================================ */
+
+  /* === 文本小件 === */
+  .st-caption { font-size: var(--fs-xs); color: var(--text-muted); line-height: 1.5; }
+  .st-money { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .st-money-code { font-size: var(--fs-xs); color: var(--text-muted); margin-left: 4px; font-weight: 500; }
+
+  /* === 按钮（组件级，与 .btn-* 并行，新页面优先用 .st-btn） === */
+  .st-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    min-height: 36px; padding: 7px 14px;
+    border-radius: var(--radius-m); border: 1px solid transparent;
+    font-size: var(--fs-sm); font-weight: 600; cursor: pointer; white-space: nowrap;
+    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+                box-shadow var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+  }
+  .st-btn:active { transform: scale(0.98); }
+  .st-btn--primary { background: var(--accent); color: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 6px 16px rgba(0, 113, 227, 0.22); }
+  .st-btn--primary:hover { background: var(--accent-hover); }
+  .st-btn--ghost { background: rgba(0, 0, 0, 0.05); color: var(--text-main); box-shadow: inset 0 0 0 1px var(--hairline); }
+  .st-btn--ghost:hover { background: rgba(0, 0, 0, 0.08); }
+  html.dark .st-btn--ghost { background: rgba(226, 232, 240, 0.10); }
+  html.dark .st-btn--ghost:hover { background: rgba(226, 232, 240, 0.16); }
+  .st-btn--danger { background: var(--tone-danger-bg); color: var(--tone-danger-text); box-shadow: inset 0 0 0 1px var(--tone-danger-ring); }
+  .st-btn--danger:hover { background: rgba(255, 59, 48, 0.18); }
+  .st-btn--solid-danger { background: #D70015; color: #fff; }
+  .st-btn--solid-danger:hover { background: #B80012; }
+  .st-btn--sm { min-height: 30px; padding: 4px 10px; font-size: var(--fs-xs); border-radius: var(--radius-s); }
+  .st-btn[disabled], .st-btn.is-disabled { opacity: 0.45; pointer-events: none; }
+  .st-icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 44px; height: 44px; border-radius: var(--radius-m);
+    color: var(--text-muted); background: transparent; border: none; cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  }
+  .st-icon-btn:hover { background: rgba(0, 0, 0, 0.06); color: var(--text-main); }
+  html.dark .st-icon-btn:hover { background: rgba(226, 232, 240, 0.10); }
+
+  /* === App Shell === */
+  .st-side {
+    position: fixed; left: 0; top: 0; bottom: 0; width: 216px; z-index: 40;
+    display: flex; flex-direction: column;
+    background: var(--nav-glass);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border-right: 1px solid var(--hairline);
+    padding: var(--sp-4) var(--sp-3);
+  }
+  .st-brand { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-1) var(--sp-2) var(--sp-4); }
+  .st-brand-mark {
+    width: 30px; height: 30px; border-radius: var(--radius-m); flex: none;
+    background: var(--accent); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: var(--fs-base); font-weight: 700;
+  }
+  .st-brand-name { font-size: var(--fs-lg); font-weight: 700; color: var(--text-main); letter-spacing: -0.01em; }
+  .st-nav { display: flex; flex-direction: column; gap: 2px; }
+  .st-nav-item {
+    display: flex; align-items: center; gap: var(--sp-3);
+    min-height: 44px; padding: 0 var(--sp-3);
+    border-radius: var(--radius-m);
+    color: var(--text-muted); font-size: var(--fs-base); font-weight: 500; text-decoration: none;
+    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  }
+  .st-nav-item i { width: 20px; text-align: center; font-size: var(--fs-lg); flex: none; }
+  .st-nav-item:hover { background: rgba(0, 0, 0, 0.05); color: var(--text-main); }
+  html.dark .st-nav-item:hover { background: rgba(226, 232, 240, 0.08); }
+  .st-nav-item.is-active { background: rgba(0, 113, 227, 0.10); color: var(--accent); font-weight: 600; }
+  html.dark .st-nav-item.is-active { background: rgba(41, 151, 255, 0.14); }
+  /* 深色壳玻璃加深：--nav-glass 深色值本为 0.72 透明度，依赖透出深色 body；
+     此处把壳三件套（侧栏/顶栏/底部 Tab）的深色不透明度提到 0.88，
+     保证品牌区+导航区+底部健康区整体呈深海军蓝，不被内容区明暗干扰。 */
+  html.dark .st-side, html.dark .st-topbar, html.dark .st-tabbar { background: rgba(11, 18, 32, 0.88); }
+  .st-side-foot { margin-top: auto; display: flex; flex-direction: column; gap: var(--sp-2); }
+  .st-side-tools { display: flex; align-items: center; gap: 2px; padding: 0 var(--sp-1); }
+  .st-topbar { display: none; }
+  .st-tabbar { display: none; }
+  .st-main { min-height: 100vh; }
+  @media (min-width: 768px) {
+    .st-main { margin-left: 216px; }
+  }
+  @media (min-width: 768px) and (max-width: 1100px) {
+    .st-side { width: 64px; padding: var(--sp-4) var(--sp-2); }
+    .st-main { margin-left: 64px; }
+    .st-brand { justify-content: center; padding-bottom: var(--sp-3); }
+    .st-brand-name, .st-nav-item span, .st-health-label, .st-side-tools .st-tool-label { display: none; }
+    .st-nav-item { justify-content: center; padding: 0; }
+    .st-health { justify-content: center; }
+    .st-side-tools { flex-direction: column; }
+  }
+  @media (max-width: 767px) {
+    .st-side { display: none; }
+    .st-main { margin-left: 0; padding-top: 56px; padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+    .st-topbar {
+      display: flex; align-items: center; gap: var(--sp-2);
+      position: fixed; left: 0; right: 0; top: 0; height: 56px; z-index: 40;
+      padding: 0 var(--sp-3);
+      background: var(--nav-glass);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      backdrop-filter: blur(20px) saturate(180%);
+      border-bottom: 1px solid var(--hairline);
+    }
+    .st-topbar .st-brand { padding: 0; }
+    .st-topbar .st-brand-mark { width: 26px; height: 26px; font-size: var(--fs-sm); }
+    .st-topbar .st-brand-name { font-size: var(--fs-base); }
+    .st-topbar-tools { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+    .st-tabbar {
+      display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      background: var(--nav-glass);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      backdrop-filter: blur(20px) saturate(180%);
+      border-top: 1px solid var(--hairline);
+    }
+    .st-tab {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+      min-height: 56px; padding: 6px 0 8px;
+      color: var(--text-muted); font-size: 11px; font-weight: 500; text-decoration: none;
+      transition: color var(--dur-fast) var(--ease);
+    }
+    .st-tab i { font-size: 19px; }
+    .st-tab.is-active { color: var(--accent); font-weight: 600; }
+  }
+
+  /* === HealthDot（状态点 + 摘要字；三处同源，禁止脉冲/呼吸动画） === */
+  .st-health {
+    display: flex; align-items: center; gap: var(--sp-2);
+    width: 100%; min-height: 44px; padding: var(--sp-2);
+    border: none; background: transparent; border-radius: var(--radius-m);
+    cursor: pointer; text-align: left; font: inherit;
+    transition: background-color var(--dur-fast) var(--ease);
+  }
+  .st-health:hover { background: rgba(0, 0, 0, 0.05); }
+  html.dark .st-health:hover { background: rgba(226, 232, 240, 0.08); }
+  .st-health-dot {
+    width: 10px; height: 10px; border-radius: 999px; flex: none;
+    background: var(--dot-unknown);
+    transition: background-color var(--dur-fast) var(--ease);
+  }
+  .st-health-dot.is-ok { background: var(--dot-ok); }
+  .st-health-dot.is-warn { background: var(--dot-warn); }
+  .st-health-dot.is-danger { background: var(--dot-danger); }
+  .st-health-dot.is-unknown { background: var(--dot-unknown); }
+  .st-health-label { font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.35; }
+  /* 概览健康卡内的大号形态：同一 .st-health-dot，加 .st-health-dot--lg */
+  .st-health-dot--lg { width: 14px; height: 14px; }
+
+  /* === CountdownChip（与 StatusBadge 同字典，见 ST.statusFor） === */
+  .st-chip {
+    display: inline-flex; align-items: center;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: var(--fs-xs); font-weight: 600; white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* === ListRow === */
+  .st-row {
+    display: flex; align-items: flex-start; gap: var(--sp-3);
+    background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: var(--radius-l); padding: var(--sp-3) var(--sp-4);
+    box-shadow: var(--sh-card);
+    transition: box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease);
+  }
+  .st-row:hover { box-shadow: var(--sh-pop); }
+  .st-row-main { flex: 1; min-width: 0; }
+  .st-row-title {
+    font-size: var(--fs-base); font-weight: 600; color: var(--text-main);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .st-row-meta { font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px; line-height: 1.5; }
+  .st-row-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+  .st-row-list { display: flex; flex-direction: column; gap: var(--sp-2); }
+
+  /* === ChannelCard === */
+  .st-channel-grid { display: grid; grid-template-columns: 1fr; gap: var(--sp-3); }
+  @media (min-width: 1024px) { .st-channel-grid { grid-template-columns: 1fr 1fr; } }
+  .st-channel-card {
+    background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: var(--radius-l); box-shadow: var(--sh-card);
+    padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3);
+  }
+  .st-channel-head { display: flex; align-items: center; gap: var(--sp-3); }
+  .st-channel-icon {
+    width: 38px; height: 38px; border-radius: var(--radius-m); flex: none;
+    background: var(--surface-tint); border: 1px solid var(--hairline);
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--text-muted); font-size: var(--fs-lg);
+  }
+  .st-channel-name { font-size: var(--fs-base); font-weight: 600; color: var(--text-main); }
+  .st-channel-last { font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.5; }
+  .st-channel-last a { color: var(--accent); text-decoration: none; }
+  .st-channel-foot { display: flex; align-items: center; gap: var(--sp-2); margin-top: auto; }
+
+  /* === 开关（渠道卡/抽屉共用） === */
+  .st-switch { position: relative; display: inline-block; width: 46px; height: 28px; flex: none; }
+  .st-switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  .st-switch-track {
+    position: absolute; inset: 0; border-radius: 999px; pointer-events: none;
+    background: rgba(120, 120, 128, 0.32);
+    transition: background-color var(--dur-fast) var(--ease);
+  }
+  .st-switch-thumb {
+    position: absolute; top: 2px; left: 2px; width: 24px; height: 24px; border-radius: 999px;
+    background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); pointer-events: none;
+    transition: transform var(--dur-fast) var(--ease);
+  }
+  .st-switch input:checked ~ .st-switch-track { background: #34C759; }
+  .st-switch input:checked ~ .st-switch-thumb { transform: translateX(18px); }
+  .st-switch input:focus-visible ~ .st-switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* === Drawer === */
+  .st-drawer-overlay {
+    position: fixed; inset: 0; z-index: 60;
+    background: rgba(18, 22, 34, 0.44);
+    -webkit-backdrop-filter: blur(10px) saturate(160%);
+    backdrop-filter: blur(10px) saturate(160%);
+    opacity: 0; pointer-events: none;
+    transition: opacity var(--dur) var(--ease);
+  }
+  .st-drawer-overlay.is-open { opacity: 1; pointer-events: auto; }
+  .st-drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 61;
+    width: min(480px, 100vw);
+    background: var(--surface); color: var(--text-main);
+    box-shadow: var(--sh-pop);
+    transform: translateX(100%);
+    transition: transform var(--dur) var(--ease);
+    display: flex; flex-direction: column;
+  }
+  .st-drawer.is-open { transform: none; }
+  .st-drawer-head {
+    display: flex; align-items: center; gap: var(--sp-2);
+    padding: var(--sp-4); border-bottom: 1px solid var(--hairline); flex: none;
+  }
+  .st-drawer-title { font-size: var(--fs-lg); font-weight: 700; flex: 1; min-width: 0; }
+  .st-drawer-body { flex: 1; overflow-y: auto; padding: var(--sp-4); }
+  .st-drawer-foot {
+    flex: none; display: flex; align-items: center; gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--hairline);
+    padding-bottom: calc(var(--sp-3) + env(safe-area-inset-bottom, 0px));
+  }
+  .st-dirty-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--dot-warn); flex: none; }
+
+  /* === Modal（危险确认由 ST.confirmDanger 驱动） === */
+  .st-modal-overlay {
+    position: fixed; inset: 0; z-index: 70;
+    background: rgba(18, 22, 34, 0.44);
+    -webkit-backdrop-filter: blur(10px) saturate(160%);
+    backdrop-filter: blur(10px) saturate(160%);
+    display: none; align-items: center; justify-content: center; padding: var(--sp-4);
+  }
+  .st-modal-overlay.is-open { display: flex; animation: st-fade-in var(--dur) ease both; }
+  .st-modal {
+    width: min(420px, 100%); background: var(--surface); color: var(--text-main);
+    border-radius: var(--radius-xl); box-shadow: var(--sh-pop);
+    padding: var(--sp-5);
+    animation: st-scale-in var(--dur) var(--ease) both;
+  }
+  .st-modal-title { font-size: var(--fs-lg); font-weight: 700; margin-bottom: var(--sp-2); }
+  .st-modal-body { font-size: var(--fs-base); color: var(--text-muted); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+  .st-modal-foot { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-5); }
+
+  /* === EmptyState（三型：--blank 真空 / --filter 筛选空 / --error 错误） === */
+  .st-empty {
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    padding: var(--sp-6) var(--sp-4); gap: var(--sp-2);
+    background: var(--surface); border: 1px dashed var(--hairline-strong);
+    border-radius: var(--radius-xl); color: var(--text-muted);
+  }
+  .st-empty-icon { font-size: 34px; color: var(--text-muted); opacity: 0.65; margin-bottom: var(--sp-1); }
+  .st-empty--error .st-empty-icon { color: var(--tone-danger-text); opacity: 1; }
+  .st-empty-title { font-size: var(--fs-lg); font-weight: 600; color: var(--text-main); }
+  .st-empty-desc { font-size: var(--fs-sm); line-height: 1.6; max-width: 420px; }
+  .st-empty-actions { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); flex-wrap: wrap; justify-content: center; }
+
+  /* === Skeleton（四形；动画只有 shimmer 1.4s） === */
+  .st-skel {
+    border-radius: var(--radius-m);
+    background: linear-gradient(90deg, rgba(0,0,0,0.06) 25%, rgba(0,0,0,0.10) 50%, rgba(0,0,0,0.06) 75%);
+    background-size: 200% 100%;
+    animation: st-shimmer 1.4s linear infinite;
+  }
+  html.dark .st-skel { background: linear-gradient(90deg, rgba(226,232,240,0.06) 25%, rgba(226,232,240,0.12) 50%, rgba(226,232,240,0.06) 75%); background-size: 200% 100%; }
+  .st-skel--card { height: 132px; border-radius: var(--radius-l); }
+  .st-skel--row { height: 76px; border-radius: var(--radius-l); }
+  .st-skel--band { height: 96px; border-radius: var(--radius-l); }
+  .st-skel--strip { height: 52px; border-radius: var(--radius-l); }
+  .st-skel-line { height: 12px; margin: 8px 0; }
+
+  /* === Field（表单字段：错误态、提示、密钥三态） === */
+  .st-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(--sp-4); }
+  .st-field-label { font-size: var(--fs-sm); font-weight: 600; color: var(--text-main); }
+  .st-field-hint { font-size: var(--fs-xs); color: var(--text-muted); line-height: 1.5; }
+  .st-field-error { font-size: var(--fs-xs); color: var(--tone-danger-text); line-height: 1.5; display: none; }
+  .st-field.is-error .st-field-error { display: block; }
+  .st-field.is-error input, .st-field.is-error select, .st-field.is-error textarea {
+    border-color: var(--tone-danger-text) !important;
+    box-shadow: 0 0 0 4px var(--tone-danger-bg);
+  }
+  .st-input {
+    width: 100%; min-height: 40px; padding: 8px 12px;
+    border: 1px solid var(--hairline-strong); border-radius: var(--radius-m);
+    background: var(--surface); color: var(--text-main); font-size: var(--fs-base);
+  }
+  /* 密钥三态徽标：is-saved 已保存 / is-update 将更新 / is-clear 将清空 */
+  .st-secret-state { font-size: var(--fs-xs); font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .st-secret-state.is-saved { background: var(--tone-ok-bg); color: var(--tone-ok-text); box-shadow: inset 0 0 0 1px var(--tone-ok-ring); }
+  .st-secret-state.is-update { background: var(--tone-info-bg); color: var(--tone-info-text); box-shadow: inset 0 0 0 1px var(--tone-info-ring); }
+  .st-secret-state.is-clear { background: var(--tone-danger-bg); color: var(--tone-danger-text); box-shadow: inset 0 0 0 1px var(--tone-danger-ring); }
+
+  /* === HourPicker（24 枚小时 Chips） === */
+  .st-hours { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+  @media (max-width: 480px) { .st-hours { grid-template-columns: repeat(6, 1fr); } }
+  .st-hour {
+    min-height: 36px; border-radius: var(--radius-s); border: 1px solid var(--hairline);
+    background: var(--surface-tint); color: var(--text-muted);
+    font-size: var(--fs-sm); font-weight: 600; font-variant-numeric: tabular-nums; cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+  }
+  .st-hour:hover { border-color: var(--hairline-strong); color: var(--text-main); }
+  .st-hour.is-on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .st-hour.is-invalid { border-color: var(--tone-danger-text); color: var(--tone-danger-text); background: var(--tone-danger-bg); }
+  .st-hours.is-disabled { opacity: 0.5; pointer-events: none; }
+
+  /* === SegmentedControl === */
+  .st-seg {
+    display: inline-flex; padding: 3px; gap: 2px;
+    background: rgba(120, 120, 128, 0.14); border-radius: var(--radius-m);
+  }
+  .st-seg-btn {
+    min-height: 30px; padding: 4px 14px; border: none; border-radius: 7px;
+    background: transparent; color: var(--text-muted);
+    font-size: var(--fs-sm); font-weight: 600; cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+  }
+  .st-seg-btn.is-active { background: var(--surface); color: var(--text-main); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+
+  /* === 筛选 Chips === */
+  .st-chips { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+  .st-fchip {
+    min-height: 36px; padding: 6px 14px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--hairline); background: var(--surface);
+    color: var(--text-muted); font-size: var(--fs-sm); font-weight: 600;
+    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+  }
+  .st-fchip:hover { border-color: var(--hairline-strong); color: var(--text-main); }
+  .st-fchip.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* === 溢出菜单（⋯） === */
+  .st-menu {
+    position: absolute; z-index: 55; min-width: 200px; padding: 6px;
+    background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-l);
+    box-shadow: var(--sh-pop);
+    animation: st-scale-in var(--dur-fast) var(--ease) both; transform-origin: top right;
+  }
+  .st-menu-item {
+    display: flex; align-items: center; gap: var(--sp-2); width: 100%;
+    min-height: 40px; padding: 8px 10px; border: none; background: transparent; border-radius: var(--radius-s);
+    color: var(--text-main); font-size: var(--fs-sm); font-weight: 500; cursor: pointer; text-align: left;
+    transition: background-color var(--dur-fast) var(--ease);
+  }
+  .st-menu-item:hover { background: rgba(0, 0, 0, 0.05); }
+  html.dark .st-menu-item:hover { background: rgba(226, 232, 240, 0.08); }
+  .st-menu-item.is-danger { color: var(--tone-danger-text); }
+  .st-menu-sep { height: 1px; background: var(--hairline); margin: 6px 4px; }
+
+  /* === AlertBanner（持久横幅，非 Toast） === */
+  .st-alert {
+    display: flex; gap: var(--sp-2); align-items: flex-start;
+    padding: var(--sp-3); border-radius: var(--radius-m);
+    font-size: var(--fs-sm); line-height: 1.55;
+  }
+  .st-alert i { margin-top: 2px; flex: none; }
+  .st-alert--error { background: var(--tone-danger-bg); color: var(--tone-danger-text); box-shadow: inset 0 0 0 1px var(--tone-danger-ring); }
+  .st-alert--warn { background: var(--tone-warn-bg); color: var(--tone-warn-text); box-shadow: inset 0 0 0 1px var(--tone-warn-ring); }
+  .st-alert--info { background: var(--tone-info-bg); color: var(--tone-info-text); box-shadow: inset 0 0 0 1px var(--tone-info-ring); }
+  .st-alert--ok { background: var(--tone-ok-bg); color: var(--tone-ok-text); box-shadow: inset 0 0 0 1px var(--tone-ok-ring); }
+
+  /* === ST Toast（独立容器，与旧 #toast-container 并行） === */
+  #st-toasts {
+    position: fixed; right: var(--sp-4); bottom: var(--sp-4); z-index: 80;
+    display: flex; flex-direction: column; gap: var(--sp-2); align-items: flex-end;
+    max-width: min(400px, calc(100vw - 32px));
+  }
+  @media (max-width: 767px) {
+    #st-toasts { bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
+  }
+  .st-toast {
+    display: flex; align-items: center; gap: var(--sp-3);
+    background: rgba(26, 29, 38, 0.94); color: #fff;
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    backdrop-filter: blur(14px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.14); border-radius: var(--radius-l);
+    box-shadow: var(--sh-pop);
+    padding: 10px 14px; font-size: var(--fs-sm); line-height: 1.5;
+    opacity: 0; transform: translateY(8px);
+    transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+  }
+  .st-toast.is-show { opacity: 1; transform: none; }
+  .st-toast--error { background: rgba(160, 32, 26, 0.95); }
+  .st-toast--warn { background: rgba(146, 90, 0, 0.96); }
+  .st-toast-action {
+    flex: none; border: none; background: rgba(255, 255, 255, 0.16); color: #fff;
+    font-size: var(--fs-sm); font-weight: 700; padding: 5px 12px; border-radius: var(--radius-s);
+    cursor: pointer; min-height: 32px;
+  }
+  .st-toast-action:hover { background: rgba(255, 255, 255, 0.26); }
+
+  /* === 时区门禁 & 页级配置错误横幅 === */
+  .st-gate-skel { display: none; }
+  html.st-not-ready .st-gate-skel { display: block; }
+  html.st-not-ready .st-tz-content { visibility: hidden; }
+  #st-config-error {
+    display: none; position: sticky; top: 0; z-index: 65;
+    margin: 0; padding: var(--sp-3) var(--sp-4);
+    background: var(--tone-danger-bg); color: var(--tone-danger-text);
+    box-shadow: inset 0 0 0 1px var(--tone-danger-ring);
+    font-size: var(--fs-sm); font-weight: 600;
+    align-items: center; gap: var(--sp-3);
+  }
+  #st-config-error.is-show { display: flex; }
+  #st-config-error button {
+    margin-left: auto; flex: none;
+    background: var(--tone-danger-text); color: #fff; border: none; cursor: pointer;
+    font-size: var(--fs-sm); font-weight: 700; padding: 6px 14px; border-radius: var(--radius-s); min-height: 32px;
+  }
+
+  /* === v3 降级 === */
+  @media (prefers-reduced-transparency: reduce) {
+    .st-side, .st-topbar, .st-tabbar, .st-drawer-overlay, .st-modal-overlay, .st-toast {
+      -webkit-backdrop-filter: none; backdrop-filter: none;
+    }
+    .st-side, .st-topbar, .st-tabbar { background: var(--surface); }
+    .st-drawer-overlay, .st-modal-overlay { background: rgba(18, 22, 34, 0.62); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .st-skel, .loading-skeleton { animation: none !important; }
+    .st-drawer, .st-toast, .st-nav-item, .st-tab { transition: none !important; }
+    html { scroll-behavior: auto; }
+  }
+</style>
+<style>
+  /* v3 补充：手机顶栏内的健康按钮紧凑形态 */
+  .st-topbar .st-health { width: auto; min-height: 44px; padding: var(--sp-1) var(--sp-2); }
+  .st-topbar .st-health-label { white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
 </style>
 <script>
   (function() {
@@ -355,5 +867,512 @@
       localStorage.setItem('themeMode', mode);
       applyTheme(mode);
     };
+  })();
+</script>
+<script>
+  /* ============================================================
+     v3 共享层 window.ST —— 页面只许调用，不许重写。
+     契约全文见 substracker-redesign/CONTRACT.md。
+     口径来源（与后端逐项对齐）：
+     - daysDiff：src/core/time.ts getDaysBetween（配置时区日历日差）
+     - 徽章字典：SPEC §3（与 scheduler 通知文案同口径）
+     - ruleSummary：src/services/notify/reminder.ts formatMatchedReminderRule
+     - 渠道必填：各渠道 validateConfig + /api/config 的 *_CONFIGURED 约定
+     ============================================================ */
+  (function() {
+    'use strict';
+    var ST = {};
+    window.ST = ST;
+
+    var IS_ADMIN = window.location.pathname.indexOf('/admin') === 0;
+    /* 时区门禁：/admin 页在 config 就绪前先上锁（html.st-not-ready），
+       CSS 隐藏 .st-tz-content、显示 .st-gate-skel，禁止按错误时区先渲染。 */
+    if (IS_ADMIN) document.documentElement.classList.add('st-not-ready');
+
+    /* ---------- 基础工具 ---------- */
+    var ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    ST.esc = function(s) {
+      return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function(c) { return ESC_MAP[c]; });
+    };
+    function pad2(n) { return String(n).padStart(2, '0'); }
+
+    /* ---------- 时区核心（镜像 src/core/time.ts 的 Intl 算法） ---------- */
+    function isValidTimezone(tz) {
+      if (typeof tz !== 'string' || !tz.trim()) return false;
+      try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch (e) { return false; }
+    }
+    function safeTimezone(tz) { return (tz && isValidTimezone(tz)) ? tz : 'UTC'; }
+    function tzParts(date, tz) {
+      var d = date instanceof Date ? date : new Date(date);
+      if (isNaN(d.getTime())) d = new Date();
+      try {
+        var parts = new Intl.DateTimeFormat('en-US', {
+          timeZone: tz, hour12: false,
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', second: '2-digit'
+        }).formatToParts(d);
+        var o = {};
+        for (var i = 0; i < parts.length; i++) o[parts[i].type] = Number(parts[i].value);
+        if (o.hour === 24) o.hour = 0;
+        return { year: o.year, month: o.month, day: o.day, hour: o.hour, minute: o.minute, second: o.second };
+      } catch (e) {
+        return {
+          year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate(),
+          hour: d.getUTCHours(), minute: d.getUTCMinutes(), second: d.getUTCSeconds()
+        };
+      }
+    }
+    function tzMidnight(date, tz) {
+      var p = tzParts(date, tz);
+      var t0 = Date.UTC(p.year, p.month - 1, p.day, 0, 0, 0);
+      var probe = tzParts(new Date(t0), tz);
+      var probeAsUtc = Date.UTC(probe.year, probe.month - 1, probe.day, probe.hour, probe.minute, probe.second);
+      return t0 - (probeAsUtc - t0);
+    }
+
+    /* ---------- 配置加载（全站一份缓存） ---------- */
+    ST.config = null;
+    ST.configError = null;
+    var cfgResolve = null, cfgReject = null;
+    ST.configReady = new Promise(function(res, rej) { cfgResolve = res; cfgReject = rej; });
+    var cfgPromise = null;
+
+    function showConfigError() {
+      var render = function() {
+        var bar = document.getElementById('st-config-error');
+        if (!bar) {
+          bar = document.createElement('div');
+          bar.id = 'st-config-error';
+          bar.setAttribute('role', 'alert');
+          var msg = document.createElement('span');
+          msg.textContent = '配置（时区）加载失败，页面日期已暂停渲染。';
+          bar.appendChild(msg);
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = '重试';
+          btn.addEventListener('click', function() {
+            ST.loadConfig(true).then(function() { window.location.reload(); }).catch(function() {});
+          });
+          bar.appendChild(btn);
+          var main = document.querySelector('.st-main') || document.body;
+          if (main) main.insertBefore(bar, main.firstChild);
+        }
+        bar.classList.add('is-show');
+      };
+      if (document.body) render();
+      else document.addEventListener('DOMContentLoaded', render);
+    }
+    function hideConfigError() {
+      var bar = document.getElementById('st-config-error');
+      if (bar) bar.classList.remove('is-show');
+    }
+
+    ST.loadConfig = function(force) {
+      if (cfgPromise && !force) return cfgPromise;
+      cfgPromise = fetch('/api/config', { credentials: 'same-origin' })
+        .then(function(r) {
+          if (!r.ok) throw new Error('配置加载失败（HTTP ' + r.status + '）');
+          return r.json();
+        })
+        .then(function(cfg) {
+          ST.config = cfg || {};
+          ST.configError = null;
+          document.documentElement.classList.remove('st-not-ready');
+          hideConfigError();
+          if (cfgResolve) { var res = cfgResolve; cfgResolve = null; cfgReject = null; res(ST.config); }
+          return ST.config;
+        })
+        .catch(function(err) {
+          ST.configError = err;
+          showConfigError();
+          if (cfgReject) { var rej = cfgReject; cfgResolve = null; cfgReject = null; rej(err); }
+          throw err;
+        });
+      return cfgPromise;
+    };
+
+    /* ---------- 日期口径（SPEC §3 宪法，前端唯一实现） ---------- */
+    ST.tz = function() { return safeTimezone(ST.config && ST.config.TIMEZONE); };
+    ST.daysDiff = function(expiryISO) {
+      var tz = ST.tz();
+      return Math.round((tzMidnight(expiryISO, tz) - tzMidnight(new Date(), tz)) / 86400000);
+    };
+    ST.fmtDateInTz = function(iso, withTime) {
+      if (!iso) return '';
+      var p = tzParts(iso, ST.tz());
+      var d = p.year + '-' + pad2(p.month) + '-' + pad2(p.day);
+      return withTime ? (d + ' ' + pad2(p.hour) + ':' + pad2(p.minute)) : d;
+    };
+    ST.fmtDateTimeInTz = function(iso) { return ST.fmtDateInTz(iso, true); };
+    ST.fmtTimeInTz = function(iso) {
+      if (!iso) return '';
+      var p = tzParts(iso, ST.tz());
+      return pad2(p.hour) + ':' + pad2(p.minute);
+    };
+
+    /* ---------- 金额（符号表镜像后端 currency-format；未知币种只显示代码，禁止回退 ¥） ---------- */
+    /* 注意：美元符号必须写成 \u0024 转义——本文件经 String.replace 注入页面，
+       字面美元符紧跟引号等序列会被替换引擎误解析（与后端表保持同值即可）。 */
+    var CURRENCY_SYMBOLS = { CNY: '¥', USD: '\u0024', HKD: 'HK\u0024', TWD: 'NT\u0024', JPY: 'JP¥', EUR: '€', GBP: '£', KRW: '₩', TRY: '₺' };
+    /* 返回 HTML 字符串：符号+千分位数字 + ISO 代码小字（.st-money-code） */
+    ST.fmtMoney = function(amount, currency) {
+      if (amount === null || amount === undefined || amount === '') return '';
+      var n = Number(amount);
+      if (isNaN(n)) return '';
+      var code = String(currency || 'CNY').toUpperCase();
+      var sym = CURRENCY_SYMBOLS[code] || '';
+      var num = n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+      return '<span class="st-money">' + ST.esc(sym + num) + '<span class="st-money-code">' + ST.esc(code) + '</span></span>';
+    };
+
+    /* ---------- 状态字典（SPEC §3；tone → 语义类） ---------- */
+    ST.TONE_CLASS = { ok: 'st-ok', warn: 'st-warn', danger: 'st-danger', muted: 'st-muted', info: 'st-info', neutral: 'st-neutral' };
+    ST.statusFor = function(sub) {
+      if (!sub) return { tone: 'muted', label: '', days: null };
+      if (sub.isActive === false) return { tone: 'muted', label: '已停用', days: null };
+      var d = ST.daysDiff(sub.expiryDate);
+      if (d < 0) return { tone: 'danger', label: '已过期 ' + Math.abs(d) + ' 天', days: d };
+      if (d === 0) return { tone: 'warn', label: '今天到期', days: d };
+      if (d <= 7) return { tone: 'warn', label: d + ' 天后到期', days: d };
+      return { tone: 'neutral', label: d + ' 天后到期', days: d };
+    };
+    /* 入参为 daysDiff 数值或带 expiryDate 的订阅对象；即将到期 ≡ 0–7 天（含今天） */
+    ST.isSoon = function(x) {
+      var d = (typeof x === 'number') ? x : (x && x.expiryDate ? ST.daysDiff(x.expiryDate) : NaN);
+      return d >= 0 && d <= 7;
+    };
+    ST.badge = function(tone, label) {
+      return '<span class="st-badge ' + (ST.TONE_CLASS[tone] || 'st-neutral') + '">' + ST.esc(label) + '</span>';
+    };
+    ST.chip = function(sub) {
+      var s = ST.statusFor(sub);
+      return '<span class="st-chip ' + (ST.TONE_CLASS[s.tone] || 'st-neutral') + '">' + ST.esc(s.label) + '</span>';
+    };
+    /* 调度结论字典（活动页/健康卡/状态点同源）：entry 为 SchedulerLogEntry */
+    ST.schedTone = function(entry) {
+      if (!entry) return { tone: 'muted', label: '无记录' };
+      if (entry.status === 'error') return { tone: 'danger', label: '执行失败' };
+      if (entry.status === 'skipped') return { tone: 'muted', label: entry.inWindow === false ? '不在发送时段' : '无命中 · 已跳过' };
+      return { tone: 'ok', label: '正常' };
+    };
+
+    /* ---------- 规则摘要（与后端 formatMatchedReminderRule 逐字同口径） ---------- */
+    ST.ruleSummary = function(rule) {
+      if (!rule) return '未设置';
+      if (rule.type === 'on_expiry') return '到期当天';
+      if (rule.type === 'after_expiry') return '到期后每 ' + (rule.repeatInterval || 24) + ' 小时';
+      var v = Number(rule.value);
+      if (!v) return rule.unit === 'hours' ? '到期当小时' : '到期当天';
+      return '提前 ' + v + ' ' + (rule.unit === 'hours' ? '小时' : '天');
+    };
+    ST.rulesSummary = function(rules) {
+      if (!Array.isArray(rules) || rules.length === 0) return '未设置';
+      return rules.map(function(r) { return ST.ruleSummary(r); }).join('、');
+    };
+
+    /* ---------- 渠道注册表与完整度（必填 = 各渠道 validateConfig） ---------- */
+    var SECRET_FIELDS = {
+      TG_BOT_TOKEN: 1, NOTIFYX_API_KEY: 1, WEBHOOK_URL: 1, WEBHOOK_HEADERS: 1,
+      WECHATBOT_WEBHOOK: 1, RESEND_API_KEY: 1, BARK_DEVICE_KEY: 1, GOTIFY_APP_TOKEN: 1,
+      SERVERCHAN_SENDKEY: 1, PUSHPLUS_TOKEN: 1, NTFY_TOKEN: 1, WPUSH_APIKEY: 1
+    };
+    ST.CHANNELS = [
+      { name: 'email',      label: '邮件',     icon: 'fa-envelope',    required: ['RESEND_API_KEY', 'EMAIL_FROM', 'EMAIL_TO'] },
+      { name: 'telegram',   label: 'Telegram', icon: 'fa-paper-plane', required: ['TG_BOT_TOKEN', 'TG_CHAT_ID'] },
+      { name: 'wechatbot',  label: '企业微信', icon: 'fa-weixin',      required: ['WECHATBOT_WEBHOOK'] },
+      { name: 'bark',       label: 'Bark',     icon: 'fa-bell',        required: ['BARK_DEVICE_KEY'] },
+      { name: 'notifyx',    label: 'NotifyX',  icon: 'fa-bolt',        required: ['NOTIFYX_API_KEY'] },
+      { name: 'serverchan', label: 'Server 酱', icon: 'fa-server',     required: ['SERVERCHAN_SENDKEY'] },
+      { name: 'pushplus',   label: 'PushPlus', icon: 'fa-plus-circle', required: ['PUSHPLUS_TOKEN'] },
+      { name: 'ntfy',       label: 'ntfy',     icon: 'fa-rss',         required: ['NTFY_TOPIC'] },
+      { name: 'gotify',     label: 'Gotify',   icon: 'fa-comment-alt', required: ['GOTIFY_SERVER_URL', 'GOTIFY_APP_TOKEN'] },
+      { name: 'wpush',      label: 'WPush',    icon: 'fa-share-alt',   required: ['WPUSH_APIKEY'] },
+      { name: 'webhook',    label: 'Webhook',  icon: 'fa-link',        required: ['WEBHOOK_URL'] }
+    ];
+    function channelDef(name) {
+      for (var i = 0; i < ST.CHANNELS.length; i++) if (ST.CHANNELS[i].name === name) return ST.CHANNELS[i];
+      return null;
+    }
+    ST.channelLabel = function(name) { var d = channelDef(name); return d ? d.label : String(name || ''); };
+    function fieldPresent(cfg, key) {
+      if (!cfg) return false;
+      if (SECRET_FIELDS[key]) return cfg[key + '_CONFIGURED'] === true;
+      var v = cfg[key];
+      if (typeof v === 'string') return v.trim().length > 0;
+      return v !== null && v !== undefined && v !== '';
+    }
+    /* 缺失的必填字段 key 数组（cfg 缺省用 ST.config） */
+    ST.channelMissing = function(name, cfg) {
+      var def = channelDef(name);
+      if (!def) return [];
+      cfg = cfg || ST.config || {};
+      return def.required.filter(function(k) { return !fieldPresent(cfg, k); });
+    };
+    /* 渠道四态：working 工作中 / incomplete 配置不完整 / off 已配置未启用 / unconfigured 未配置 */
+    ST.channelState = function(name, cfg) {
+      cfg = cfg || ST.config || {};
+      var def = channelDef(name);
+      var missing = ST.channelMissing(name, cfg);
+      var enabled = Array.isArray(cfg.ENABLED_NOTIFIERS) && cfg.ENABLED_NOTIFIERS.indexOf(name) >= 0;
+      var anyPresent = def ? def.required.some(function(k) { return fieldPresent(cfg, k); }) : false;
+      var state;
+      if (!anyPresent) state = 'unconfigured';
+      else if (missing.length > 0) state = 'incomplete';
+      else state = enabled ? 'working' : 'off';
+      return { state: state, enabled: enabled, missing: missing };
+    };
+
+    /* ---------- 健康聚合（SPEC §2 三态；侧边栏点/概览健康卡/活动结论同源） ---------- */
+    ST.health = function() {
+      return ST.configReady.catch(function() { return null; }).then(function() {
+        if (!ST.config) {
+          return { tone: 'unknown', label: '配置未加载', detail: '', incomplete: [], enabled: [], failedRecent: 0, lastRunAt: null, lastDueStatus: null };
+        }
+        var cfg = ST.config;
+        var enabled = Array.isArray(cfg.ENABLED_NOTIFIERS) ? cfg.ENABLED_NOTIFIERS : [];
+        var incomplete = enabled.filter(function(n) { return ST.channelMissing(n, cfg).length > 0; });
+        var since = new Date(Date.now() - 7 * 86400000).toISOString();
+        var pSched = fetch('/api/scheduler-logs?limit=10', { credentials: 'same-origin' })
+          .then(function(r) { return r.json(); })
+          .then(function(j) { return (j && j.logs) || []; })
+          .catch(function() { return []; });
+        var pNotes = fetch('/api/notification-logs?since=' + encodeURIComponent(since) + '&limit=200', { credentials: 'same-origin' })
+          .then(function(r) { return r.json(); })
+          .then(function(j) { return (j && j.logs) || []; })
+          .catch(function() { return []; });
+        return Promise.all([pSched, pNotes]).then(function(res) {
+          var sched = res[0], notes = res[1];
+          var failedRecent = 0;
+          for (var i = 0; i < notes.length; i++) if (notes[i].status === 'failed') failedRecent++;
+          var lastDue = null;
+          for (var j = 0; j < sched.length; j++) { if (sched[j].status !== 'skipped') { lastDue = sched[j]; break; } }
+          var tone, label, detail = '';
+          if (sched.length === 0 && notes.length === 0) {
+            tone = 'unknown'; label = '尚无检查记录';
+          } else if (lastDue && lastDue.status === 'error') {
+            tone = 'danger'; label = '调度异常';
+            detail = lastDue.reason || '最近一次应发执行失败';
+          } else if (enabled.length === 0) {
+            tone = 'warn'; label = '未启用通知渠道';
+          } else if (incomplete.length > 0) {
+            tone = 'warn'; label = incomplete.length + ' 个渠道配置不完整';
+            detail = '缺项渠道：' + incomplete.map(function(n) { return ST.channelLabel(n); }).join('、');
+          } else if (failedRecent > 0) {
+            tone = 'warn'; label = '近 7 天有 ' + failedRecent + ' 次发送失败';
+          } else {
+            tone = 'ok'; label = '提醒正常';
+            if (sched.length > 0) {
+              detail = '上次检查 ' + ST.fmtTimeInTz(sched[0].startedAt) +
+                (sched[0].status === 'skipped' ? '（正常跳过）' : '');
+            }
+          }
+          return {
+            tone: tone, label: label, detail: detail,
+            incomplete: incomplete, enabled: enabled,
+            failedRecent: failedRecent,
+            lastRunAt: sched.length ? sched[0].startedAt : null,
+            lastDueStatus: lastDue ? lastDue.status : null
+          };
+        });
+      });
+    };
+
+    /* ---------- Toast（#st-toasts 独立容器，与旧 #toast-container 并行） ---------- */
+    function toastContainer() {
+      var c = document.getElementById('st-toasts');
+      if (!c) {
+        c = document.createElement('div');
+        c.id = 'st-toasts';
+        document.body.appendChild(c);
+      }
+      return c;
+    }
+    /* ST.toast(msg, { tone, actionLabel, onAction, duration }) → 返回 dismiss()
+       默认时长：普通 3.2s / error 4.5s / 带操作 6s（SPEC：操作型 5s 起） */
+    ST.toast = function(msg, opts) {
+      opts = opts || {};
+      var tone = opts.tone || 'ok';
+      var hasAction = typeof opts.onAction === 'function' && !!opts.actionLabel;
+      var duration = (opts.duration !== null && opts.duration !== undefined)
+        ? opts.duration
+        : (hasAction ? 6000 : (tone === 'error' ? 4500 : 3200));
+      var el = document.createElement('div');
+      el.className = 'st-toast' + (tone === 'error' ? ' st-toast--error' : (tone === 'warn' ? ' st-toast--warn' : ''));
+      el.setAttribute('role', 'status');
+      var span = document.createElement('span');
+      span.textContent = msg;
+      el.appendChild(span);
+      var timer = null, dismissed = false;
+      function dismiss() {
+        if (dismissed) return;
+        dismissed = true;
+        if (timer) clearTimeout(timer);
+        el.classList.remove('is-show');
+        setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
+      }
+      if (hasAction) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'st-toast-action';
+        btn.textContent = opts.actionLabel;
+        btn.addEventListener('click', function() { dismiss(); opts.onAction(); });
+        el.appendChild(btn);
+      }
+      toastContainer().appendChild(el);
+      requestAnimationFrame(function() { requestAnimationFrame(function() { el.classList.add('is-show'); }); });
+      if (duration > 0) timer = setTimeout(dismiss, duration);
+      return dismiss;
+    };
+
+    /* ---------- 危险确认 Modal（焦点陷阱 + 关闭归还焦点） ---------- */
+    var confirmEls = null, confirmState = null;
+    function ensureConfirm() {
+      if (confirmEls) return confirmEls;
+      var overlay = document.createElement('div');
+      overlay.className = 'st-modal-overlay';
+      overlay.id = 'st-confirm';
+      overlay.innerHTML =
+        '<div class="st-modal" role="alertdialog" aria-modal="true" aria-labelledby="st-confirm-title" aria-describedby="st-confirm-body">' +
+          '<div class="st-modal-title" id="st-confirm-title"></div>' +
+          '<div class="st-modal-body" id="st-confirm-body"></div>' +
+          '<div class="st-modal-foot">' +
+            '<button type="button" class="st-btn st-btn--ghost" data-act="cancel">取消</button>' +
+            '<button type="button" class="st-btn st-btn--solid-danger" data-act="confirm">删除</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(overlay);
+      var cancelBtn = overlay.querySelector('[data-act="cancel"]');
+      var confirmBtn = overlay.querySelector('[data-act="confirm"]');
+      cancelBtn.addEventListener('click', function() { settleConfirm(false); });
+      confirmBtn.addEventListener('click', function() { settleConfirm(true); });
+      overlay.addEventListener('click', function(e) { if (e.target === overlay) settleConfirm(false); });
+      overlay.addEventListener('keydown', function(e) {
+        if (!confirmState) return;
+        if (e.key === 'Escape') { e.preventDefault(); settleConfirm(false); return; }
+        if (e.key === 'Tab') {
+          var focusables = [cancelBtn, confirmBtn];
+          var idx = focusables.indexOf(document.activeElement);
+          e.preventDefault();
+          var next = e.shiftKey
+            ? focusables[(idx <= 0 ? focusables.length : idx) - 1]
+            : focusables[(idx + 1) % focusables.length];
+          next.focus();
+        }
+      });
+      confirmEls = {
+        overlay: overlay,
+        title: overlay.querySelector('#st-confirm-title'),
+        body: overlay.querySelector('#st-confirm-body'),
+        cancelBtn: cancelBtn,
+        confirmBtn: confirmBtn
+      };
+      return confirmEls;
+    }
+    function settleConfirm(v) {
+      if (!confirmState) return;
+      var s = confirmState;
+      confirmState = null;
+      confirmEls.overlay.classList.remove('is-open');
+      if (s.lastFocus && typeof s.lastFocus.focus === 'function') s.lastFocus.focus();
+      s.resolve(v);
+    }
+    /* ST.confirmDanger({ title, body, confirmText }) → Promise<boolean>；body 按纯文本渲染 */
+    ST.confirmDanger = function(opts) {
+      opts = opts || {};
+      return new Promise(function(resolve) {
+        var els = ensureConfirm();
+        els.title.textContent = opts.title || '确认删除？';
+        els.body.textContent = opts.body || '';
+        els.confirmBtn.textContent = opts.confirmText || '删除';
+        confirmState = { resolve: resolve, lastFocus: document.activeElement };
+        els.overlay.classList.add('is-open');
+        els.cancelBtn.focus();
+      });
+    };
+
+    /* ---------- App Shell ---------- */
+    var NAV = [
+      { key: 'dashboard',     label: '概览', href: '/admin/dashboard',   icon: 'fa-chart-line' },
+      { key: 'subscriptions', label: '订阅', href: '/admin',             icon: 'fa-list' },
+      { key: 'channels',      label: '渠道', href: '/admin/channels',    icon: 'fa-paper-plane' },
+      { key: 'activity',      label: '活动', href: '/admin/notify-logs', icon: 'fa-history' },
+      { key: 'settings',      label: '设置', href: '/admin/config',      icon: 'fa-cog' }
+    ];
+    ST.NAV = NAV;
+    function syncThemeIcons() {
+      var dark = document.documentElement.classList.contains('dark');
+      var btns = document.querySelectorAll('[data-st-theme] i');
+      for (var i = 0; i < btns.length; i++) btns[i].className = 'fas ' + (dark ? 'fa-sun' : 'fa-moon');
+    }
+    function fillHealth() {
+      ST.health().then(function(h) {
+        var cls = 'st-health-dot ' + (h.tone === 'unknown' ? 'is-unknown' : ('is-' + h.tone));
+        var blocks = document.querySelectorAll('[data-st-health]');
+        for (var i = 0; i < blocks.length; i++) {
+          var dot = blocks[i].querySelector('.st-health-dot');
+          if (dot) dot.className = cls;
+          var lab = blocks[i].querySelector('.st-health-label');
+          if (lab) lab.textContent = h.label;
+          blocks[i].title = (h.detail ? h.detail + ' · ' : '') + '点击查看渠道健康';
+        }
+      }).catch(function() {});
+    }
+    /* ST.shell(active)：渲染进 <div id="st-shell"></div>；
+       active ∈ dashboard | subscriptions | channels | activity | settings */
+    ST.shell = function(active) {
+      var mount = document.getElementById('st-shell');
+      if (!mount) return;
+      var navHtml = '', tabHtml = '';
+      for (var i = 0; i < NAV.length; i++) {
+        var n = NAV[i];
+        var on = n.key === active ? ' is-active' : '';
+        navHtml += '<a class="st-nav-item' + on + '" href="' + n.href + '"><i class="fas ' + n.icon + '"></i><span>' + n.label + '</span></a>';
+        tabHtml += '<a class="st-tab' + on + '" href="' + n.href + '"><i class="fas ' + n.icon + '"></i><span>' + n.label + '</span></a>';
+      }
+      var healthHtml =
+        '<button type="button" class="st-health" data-st-health title="查看渠道健康">' +
+          '<span class="st-health-dot is-unknown"></span><span class="st-health-label">检查中…</span>' +
+        '</button>';
+      var themeBtn =
+        '<button type="button" class="st-icon-btn" data-st-theme title="切换主题" aria-label="切换主题"><i class="fas fa-moon"></i></button>';
+      var logoutHtml =
+        '<a class="st-icon-btn" href="/api/logout" title="退出登录" aria-label="退出登录"><i class="fas fa-sign-out-alt"></i></a>';
+      mount.innerHTML =
+        '<aside class="st-side">' +
+          '<div class="st-brand"><span class="st-brand-mark">S</span><span class="st-brand-name">SubsTracker</span></div>' +
+          '<nav class="st-nav">' + navHtml + '</nav>' +
+          '<div class="st-side-foot">' + healthHtml +
+            '<div class="st-side-tools">' + themeBtn + logoutHtml + '</div>' +
+          '</div>' +
+        '</aside>' +
+        '<header class="st-topbar">' +
+          '<div class="st-brand"><span class="st-brand-mark">S</span><span class="st-brand-name">SubsTracker</span></div>' +
+          '<div class="st-topbar-tools">' + healthHtml + themeBtn + logoutHtml + '</div>' +
+        '</header>' +
+        '<nav class="st-tabbar">' + tabHtml + '</nav>';
+      var healthBlocks = mount.querySelectorAll('[data-st-health]');
+      for (var j = 0; j < healthBlocks.length; j++) {
+        healthBlocks[j].addEventListener('click', function() { window.location.href = '/admin/channels'; });
+      }
+      var themeBtns = mount.querySelectorAll('[data-st-theme]');
+      for (var k = 0; k < themeBtns.length; k++) {
+        themeBtns[k].addEventListener('click', function() {
+          var next = document.documentElement.classList.contains('dark') ? 'light' : 'dark';
+          if (typeof window.updateAppTheme === 'function') window.updateAppTheme(next);
+          syncThemeIcons();
+        });
+      }
+      syncThemeIcons();
+      fillHealth();
+    };
+
+    /* ---------- 自动装配：壳挂载点（可带 data-active）+ /admin 页配置预加载 ---------- */
+    document.addEventListener('DOMContentLoaded', function() {
+      var mount = document.getElementById('st-shell');
+      if (mount && !mount.hasChildNodes()) {
+        ST.shell(mount.getAttribute('data-active') || '');
+      }
+      if (IS_ADMIN) ST.loadConfig().catch(function() {});
+    });
   })();
 </script>

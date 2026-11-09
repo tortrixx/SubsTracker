@@ -30,6 +30,25 @@
         0 24px 56px rgba(15, 23, 42, 0.16);
     }
     .login-box h1 { letter-spacing: -0.01em; }
+    .login-box { position: relative; }
+    /* 登录卡右上角主题切换钮（浅/深两态，走 updateAppTheme/themeMode 既有机制） */
+    .login-theme-btn {
+      position: absolute; top: 14px; right: 14px; z-index: 2;
+      width: 40px; height: 40px; border-radius: 999px;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: rgba(255, 255, 255, 0.55);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      color: #3A3A3C; font-size: 16px; cursor: pointer;
+      transition: background-color 0.125s ease, color 0.125s ease, border-color 0.125s ease;
+    }
+    .login-theme-btn:hover { background: rgba(255, 255, 255, 0.85); }
+    .login-theme-btn:focus-visible { outline: 2px solid #0071E3; outline-offset: 2px; }
+    html.dark .login-theme-btn {
+      background: rgba(226, 232, 240, 0.08);
+      border-color: rgba(226, 232, 240, 0.16);
+      color: #EDF1F7;
+    }
+    html.dark .login-theme-btn:hover { background: rgba(226, 232, 240, 0.16); }
     .input-field {
       transition: border-color 0.125s ease, box-shadow 0.125s ease, background-color 0.125s ease;
       border: 1px solid rgba(0, 0, 0, 0.12);
@@ -72,6 +91,9 @@
 </head>
 <body class="login-container flex items-center justify-center">
   <div class="login-box p-8 rounded-xl w-full max-w-md">
+    <button type="button" id="themeToggle" class="login-theme-btn" aria-label="切换深色 / 浅色主题" title="切换深色 / 浅色主题">
+      <i class="fas fa-moon"></i>
+    </button>
     <div class="text-center mb-8">
       <h1 class="text-2xl font-bold text-gray-800"><i class="fas fa-calendar-check mr-2"></i>订阅管理系统</h1>
       <p class="text-gray-600 mt-2">登录管理您的订阅提醒</p>
@@ -139,6 +161,27 @@
         button.disabled = false;
       }
     });
+  </script>
+  <script>
+    // 登录页主题切换：浅/深两态，复用 theme-resources 的 updateAppTheme（themeMode 存储键不变）
+    (function () {
+      var btn = document.getElementById('themeToggle');
+      if (!btn) return;
+      function syncIcon() {
+        var dark = document.documentElement.classList.contains('dark');
+        btn.querySelector('i').className = dark ? 'fas fa-sun' : 'fas fa-moon';
+      }
+      btn.addEventListener('click', function () {
+        var dark = document.documentElement.classList.contains('dark');
+        if (typeof window.updateAppTheme === 'function') {
+          window.updateAppTheme(dark ? 'light' : 'dark');
+        }
+        syncIcon();
+      });
+      syncIcon();
+      // 主题可能由服务端同步稍后落到 html.dark 上，图标随之同步
+      new MutationObserver(syncIcon).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    })();
   </script>
 </body>
 </html>

@@ -452,16 +452,117 @@ async function deleteSubscription(id: string, env: AppEnv): Promise<Subscription
   }
 }
 
+/** 手动续订可选项 */
+export interface ManualRenewOptions {
+  paymentDate?: string | Date;
+  amount?: number;
+  periodMultiplier?: number;
+  note?: string;
+}
+
+/** 续订计算结果（落库与预览共用同一形状，日期均为 ISO 串） */
+export interface RenewalComputation {
+  /** 新周期开始日 */
+  newStartDate: string;
+  /** 新到期日 */
+  newExpiryDate: string;
+  /** 支付日 */
+  paymentDate: string;
+  /** 将写入的支付记录（预览时与落库同构；id 为时间戳生成，预览与落库两次调用不保证相同） */
+  paymentRecord: PaymentRecord;
+}
+
+/** 续订预览的返回形状 */
+export interface RenewPreviewResult {
+  success: boolean;
+  message?: string;
+  preview?: RenewalComputation;
+}
+
 /**
- * 手动续订订阅。
+ * 计算一次手动续订的结果（纯函数：不读不写存储、无副作用）。
+ *
+ * 手动续订落库（manualRenewSubscription）与续订预览（previewManualRenewal）
+ * 共用本函数，保证预览展示的新到期日与实际落库逐字一致（验收 A17）。
  *
  * 业务规则：
  * - reset 模式：以支付日期为新开始
  * - cycle 模式：现到期日 > 支付日 时接续，否则以支付日为新开始
  * - 农历模式按农历周期推算
  *
+ * nowUtc：未显式给 paymentDate 时的支付日缺省值（当前时刻），
+ * 由调用方按配置时区取好后传入。
  */
-async function manualRenewSubscription(id: string, env: AppEnv, options: { paymentDate?: string | Date; amount?: number; periodMultiplier?: number; note?: string } = {}): Promise<SubscriptionResult> {
+export function computeManualRenewal(
+  subscription: Subscription,
+  options: ManualRenewOptions,
+  timezone: string,
+  nowUtc: Date
+): RenewalComputation {
+  const paymentDate = options.paymentDate
+    ? parseDateInputInTimezone(options.paymentDate, timezone)
+    : nowUtc;
+  const amount = options.amount !== undefined ? options.amount : subscription.amount || 0;
+  const periodMultiplier = options.periodMultiplier || 1;
+  const note = options.note || '手动续订';
+  const mode = subscription.subscriptionMode || 'cycle';
+
+  let newStartDate: Date;
+  const currentExpiryDate = new Date(subscription.expiryDate);
+
+  if (mode === 'reset') {
+    newStartDate = new Date(paymentDate);
+  } else {
+    newStartDate =
+      currentExpiryDate.getTime() > paymentDate.getTime()
+        ? new Date(currentExpiryDate)
+        : new Date(paymentDate);
+  }
+
+  let newExpiryDate: Date;
+  if (subscription.useLunar) {
+    const solarStart = getTimezoneDateParts(newStartDate, timezone);
+    let lunar: LunarDateInput | null = lunarCalendar.solar2lunar(solarStart.year, solarStart.month, solarStart.day);
+    let nextLunar: LunarDateInput | null = lunar;
+    for (let i = 0; i < periodMultiplier; i++) {
+      nextLunar = lunarBiz.addLunarPeriod(nextLunar as LunarDateInput, subscription.periodValue, subscription.periodUnit);
+    }
+    const solar = lunarBiz.lunar2solar(nextLunar as LunarDateInput) as SolarDate;
+    newExpiryDate = buildTimezoneDate(solar.year, solar.month, solar.day, timezone);
+  } else {
+    const totalPeriodValue = subscription.periodValue * periodMultiplier;
+    newExpiryDate = addCalendarPeriodInTimezone(
+      newStartDate,
+      totalPeriodValue,
+      subscription.periodUnit,
+      timezone,
+      { endOfMonth: !!subscription.endOfMonth }
+    );
+  }
+
+  const paymentRecord: PaymentRecord = {
+    id: Date.now().toString(),
+    date: paymentDate.toISOString(),
+    amount,
+    currency: subscription.currency || 'CNY',
+    type: 'manual',
+    note,
+    periodStart: newStartDate.toISOString(),
+    periodEnd: newExpiryDate.toISOString()
+  };
+
+  return {
+    newStartDate: newStartDate.toISOString(),
+    newExpiryDate: newExpiryDate.toISOString(),
+    paymentDate: paymentDate.toISOString(),
+    paymentRecord
+  };
+}
+
+/**
+ * 手动续订订阅（计算走 computeManualRenewal，与预览接口同源）。
+ */
+async function manualRenewSubscription(id: string, env: AppEnv, options: ManualRenewOptions = {}): Promise<SubscriptionResult> {
   try {
     const subscription = await subRepo.getById(env, id);
     if (!subscription) return { success: false, message: '订阅不存在' };
@@ -474,67 +575,17 @@ async function manualRenewSubscription(id: string, env: AppEnv, options: { payme
     const timezone = config.TIMEZONE || 'Asia/Shanghai';
     const now = getNowInTimezone(timezone);
 
-    const paymentDate = options.paymentDate
-      ? parseDateInputInTimezone(options.paymentDate, timezone)
-      : now.utc;
-    const amount = options.amount !== undefined ? options.amount : subscription.amount || 0;
-    const periodMultiplier = options.periodMultiplier || 1;
-    const note = options.note || '手动续订';
-    const mode = subscription.subscriptionMode || 'cycle';
-
-    let newStartDate;
-    const currentExpiryDate = new Date(subscription.expiryDate);
-
-    if (mode === 'reset') {
-      newStartDate = new Date(paymentDate);
-    } else {
-      newStartDate =
-        currentExpiryDate.getTime() > paymentDate.getTime()
-          ? new Date(currentExpiryDate)
-          : new Date(paymentDate);
-    }
-
-    let newExpiryDate;
-    if (subscription.useLunar) {
-      const solarStart = getTimezoneDateParts(newStartDate, timezone);
-      let lunar: LunarDateInput | null = lunarCalendar.solar2lunar(solarStart.year, solarStart.month, solarStart.day);
-      let nextLunar: LunarDateInput | null = lunar;
-      for (let i = 0; i < periodMultiplier; i++) {
-        nextLunar = lunarBiz.addLunarPeriod(nextLunar as LunarDateInput, subscription.periodValue, subscription.periodUnit);
-      }
-      const solar = lunarBiz.lunar2solar(nextLunar as LunarDateInput) as SolarDate;
-      newExpiryDate = buildTimezoneDate(solar.year, solar.month, solar.day, timezone);
-    } else {
-      const totalPeriodValue = subscription.periodValue * periodMultiplier;
-      newExpiryDate = addCalendarPeriodInTimezone(
-        newStartDate,
-        totalPeriodValue,
-        subscription.periodUnit,
-        timezone,
-        { endOfMonth: !!subscription.endOfMonth }
-      );
-    }
-
-    const paymentRecord: PaymentRecord = {
-      id: Date.now().toString(),
-      date: paymentDate.toISOString(),
-      amount,
-      currency: subscription.currency || 'CNY',
-      type: 'manual',
-      note,
-      periodStart: newStartDate.toISOString(),
-      periodEnd: newExpiryDate.toISOString()
-    };
+    const computation = computeManualRenewal(subscription, options, timezone, now.utc);
 
     const paymentHistoryLimit = config.PAYMENT_HISTORY_LIMIT || 100;
-    const paymentHistory = [...(subscription.paymentHistory || []), paymentRecord];
+    const paymentHistory = [...(subscription.paymentHistory || []), computation.paymentRecord];
     const trimmedPaymentHistory = trimPaymentHistory(paymentHistory, paymentHistoryLimit);
 
     const updated: Subscription = {
       ...subscription,
-      startDate: newStartDate.toISOString(),
-      expiryDate: newExpiryDate.toISOString(),
-      lastPaymentDate: paymentDate.toISOString(),
+      startDate: computation.newStartDate,
+      expiryDate: computation.newExpiryDate,
+      lastPaymentDate: computation.paymentDate,
       paymentHistory: trimmedPaymentHistory
     };
 
@@ -544,6 +595,31 @@ async function manualRenewSubscription(id: string, env: AppEnv, options: { payme
   } catch (error) {
     console.error('手动续订失败:', error);
     return { success: false, message: '续订失败: ' + (error && (error as Error).message ? (error as Error).message : error) };
+  }
+}
+
+/**
+ * 续订预览：与 manualRenewSubscription 共用 computeManualRenewal 计算，
+ * 只算不落库，供前端在确认续订前展示将要落库的新到期日（验收 A17）。
+ */
+async function previewManualRenewal(id: string, env: AppEnv, options: ManualRenewOptions = {}): Promise<RenewPreviewResult> {
+  try {
+    const subscription = await subRepo.getById(env, id);
+    if (!subscription) return { success: false, message: '订阅不存在' };
+
+    if (!subscription.periodValue || !subscription.periodUnit) {
+      return { success: false, message: '订阅未设置续订周期' };
+    }
+
+    const config = await getConfig(env);
+    const timezone = config.TIMEZONE || 'Asia/Shanghai';
+    const now = getNowInTimezone(timezone);
+
+    const preview = computeManualRenewal(subscription, options, timezone, now.utc);
+    return { success: true, preview };
+  } catch (error) {
+    console.error('续订预览失败:', error);
+    return { success: false, message: '续订预览失败: ' + (error && (error as Error).message ? (error as Error).message : error) };
   }
 }
 
@@ -689,6 +765,7 @@ export {
   updateSubscription,
   deleteSubscription,
   manualRenewSubscription,
+  previewManualRenewal,
   deletePaymentRecord,
   updatePaymentRecord,
   toggleSubscriptionStatus,

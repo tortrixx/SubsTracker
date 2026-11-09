@@ -11,7 +11,16 @@ import { sendServerChanNotification } from '../../services/notify/serverchan.js'
 import { sendPushPlusNotification } from '../../services/notify/pushplus.js';
 import { sendNtfyNotification } from '../../services/notify/ntfy.js';
 import { sendWPushNotification } from '../../services/notify/wpush.js';
+import { writeLog } from '../../data/notification-logs.repo.js';
 import type { AppEnv } from '../../platform/storage/storage-port.js';
+
+/**
+ * 渠道测试日志的占位 subId（渠道级测试不隶属任何订阅）；
+ * 来源以 ruleId = 'test' 标注，与正式发送（真实 ruleId）、订阅手动测试
+ * （ruleId = 'manual-test'）区分，活动页与渠道卡按 ruleId 即可辨识。
+ */
+const CHANNEL_TEST_SUB_ID = 'channel-test';
+const CHANNEL_TEST_RULE_ID = 'test';
 
 /** 测试通知请求体（JSON 边界：各渠道的待测字段，取值在使用处逐个守卫） */
 interface TestNotificationBody {
@@ -230,6 +239,21 @@ async function handleTestNotification(request: Request, env: AppEnv): Promise<Re
       const content = '这是一条测试通知，用于验证 WPUSH 通知功能是否正常工作。\n\n发送时间: ' + formatBeijingTime();
       success = await sendWPushNotification(title, content, testConfig);
       message = success ? 'WPUSH 通知发送成功' : 'WPUSH 通知发送失败，请检查配置';
+    }
+
+    // 渠道测试落一条通知日志（与正式发送同构），使活动页可复查、
+    // 渠道卡「最近结果」有真实数据（验收 A11/A12）。写日志失败不影响测试结果。
+    try {
+      await writeLog(env, {
+        subId: CHANNEL_TEST_SUB_ID,
+        ruleId: CHANNEL_TEST_RULE_ID,
+        channel: type,
+        status: success ? 'success' : 'failed',
+        title: '测试通知',
+        error: success ? undefined : message
+      });
+    } catch (err) {
+      console.warn('[测试通知] 写通知日志失败:', err);
     }
 
     return new Response(

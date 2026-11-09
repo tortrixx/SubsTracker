@@ -5,6 +5,7 @@ import {
   updateSubscription,
   deleteSubscription,
   manualRenewSubscription,
+  previewManualRenewal,
   deletePaymentRecord,
   updatePaymentRecord,
   toggleSubscriptionStatus,
@@ -168,6 +169,18 @@ async function handleSubscriptions(request: Request, env: AppEnv, path: string):
 
     if (parts[3] === 'test-notify' && method === 'POST') {
       const result = await testSingleSubscriptionNotification(id, env);
+      return new Response(JSON.stringify(result), { status: result.success ? 200 : 400, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    if (parts[3] === 'renew' && parts[4] === 'preview' && method === 'POST') {
+      let options: RenewOptions = {};
+      try {
+        const body = (await request.json()) as RenewOptions | null;
+        options = body || {};
+      } catch (e) {
+        // empty
+      }
+      const result = await previewManualRenewal(id, env, options);
       return new Response(JSON.stringify(result), { status: result.success ? 200 : 400, headers: { 'Content-Type': 'application/json' } });
     }
 

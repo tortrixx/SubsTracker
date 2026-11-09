@@ -3,532 +3,641 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>仪表盘 - SubsTracker</title>
+  <title>概览 - SubsTracker</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
-  ${themeResources}  <style>
-    .stat-card{background:white;border-radius:12px;padding:1.5rem;box-shadow:0 2px 8px rgba(0,0,0,0.1);transition:transform 0.2s,box-shadow 0.2s}
-    .stat-card:hover{transform:translateY(-4px);box-shadow:0 4px 16px rgba(0,0,0,0.15)}
-    .stat-card-header{color:#6b7280;font-size:0.875rem;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
-    .stat-card-value{font-size:2rem;font-weight:700;color:#1f2937;margin-bottom:0.25rem}
-    .stat-card-subtitle{color:#9ca3af;font-size:0.875rem}
-    .stat-card-trend{display:inline-flex;align-items:center;gap:0.25rem;font-size:0.875rem;margin-top:0.5rem;padding:0.25rem 0.5rem;border-radius:6px}
-    .stat-card-trend.up{color:#10b981;background:#d1fae5}
-    .stat-card-trend.down{color:#ef4444;background:#fee2e2}
-    .stat-card-trend.flat{color:#6b7280;background:#f3f4f6}
-    .list-item{display:flex;align-items:center;justify-content:space-between;padding:1rem;border-radius:8px;transition:background 0.2s}
-    .list-item:hover{background:#f9fafb}
-    .list-item:not(:last-child){border-bottom:1px solid #f3f4f6}
-    .list-item-content{flex:1}
-    .list-item-name{font-weight:600;color:#1f2937;margin-bottom:0.25rem}
-    .list-item-meta{display:flex;align-items:center;gap:1rem;font-size:0.875rem;color:#6b7280;flex-wrap:wrap}
-    .list-item-amount{font-size:1.125rem;font-weight:700;color:#10b981}
-    .list-item-badge{display:inline-block;padding:0.25rem 0.75rem;border-radius:12px;font-size:0.75rem;font-weight:500;background:#e0e7ff;color:#4f46e5}
-    .ranking-item{margin-bottom:1rem}
-    .ranking-item-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem}
-    .ranking-item-name{font-weight:600;color:#1f2937}
-    .ranking-item-value{display:flex;align-items:center;gap:0.5rem;font-size:0.875rem}
-    .ranking-item-amount{font-weight:700;color:#1f2937}
-    .ranking-item-percentage{color:#10b981}
-    .ranking-progress{width:100%;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden}
-    .ranking-progress-bar{height:100%;border-radius:4px;transition:width 0.6s ease}
-    .ranking-progress-bar.color-1{background:linear-gradient(90deg,#6366f1,#8b5cf6)}
-    .ranking-progress-bar.color-2{background:linear-gradient(90deg,#10b981,#059669)}
-    .ranking-progress-bar.color-3{background:linear-gradient(90deg,#f59e0b,#d97706)}
-    .ranking-progress-bar.color-4{background:linear-gradient(90deg,#ef4444,#dc2626)}
-    .ranking-progress-bar.color-5{background:linear-gradient(90deg,#8b5cf6,#7c3aed)}
-    .empty-state{text-align:center;padding:3rem 1rem;color:#9ca3af}
-    .empty-state-icon{font-size:3rem;margin-bottom:1rem;opacity:0.5}
-    .empty-state-text{font-size:0.875rem}
-    /* === Dashboard 暗黑模式修复 === */
-    html.dark .stat-card {
-      background: #1f2937; /* 深色卡片背景 */
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+  ${themeResources}
+  <style>
+    /* === 概览页布局（只用主题层 tokens 组合，不写私有色值/时长） === */
+    html.st-not-ready .st-tz-content { display: none; }
+    .ov-wrap {
+      max-width: 1120px; margin: 0 auto;
+      padding: var(--sp-5) var(--sp-4) var(--sp-6);
+      animation: ov-in var(--dur) var(--ease) both;
     }
-    html.dark .stat-card-header { color: #9ca3af; }
-    html.dark .stat-card-value { color: #f3f4f6; } /* 白色文字 */
-    html.dark .stat-card-subtitle { color: #6b7280; } 
-    html.dark .stat-card-trend.flat { background: #374151; color: #9ca3af; }
-    html.dark .stat-card-trend.up { background: rgba(16, 185, 129, 0.2); }
-    html.dark .stat-card-trend.down { background: rgba(239, 68, 68, 0.2); }
-    html.dark .list-item:hover { background: #374151; }
-    html.dark .list-item:not(:last-child) { border-bottom-color: #374151; }
-    html.dark .list-item-name { color: #f3f4f6; } /* 列表项名称变白 */
-    html.dark .list-item-meta { color: #9ca3af; }
-    html.dark .list-item-badge { background: #3730a3; color: #c7d2fe; }
-    html.dark .ranking-item-name { color: #f3f4f6; } /* 排行榜名称变白 */
-    html.dark .ranking-item-amount { color: #e5e7eb; } /* 金额变白 */
-    html.dark .ranking-progress { background: #374151; }
-    /* 修复右上角的标签 */
-    html.dark .bg-indigo-100 { background-color: rgba(99, 102, 241, 0.2) !important; color: #a5b4fc !important; }
-    html.dark .text-indigo-800 { color: #c7d2fe !important; }
-    .loading-skeleton{background:linear-gradient(90deg,#f3f4f6 25%,#e5e7eb 50%,#f3f4f6 75%);background-size:200% 100%;animation:loading 1.5s infinite;height:100px;border-radius:8px}
-    /* 暗黑模式骨架屏 */
-    html.dark .loading-skeleton { background: linear-gradient(90deg, #374151 25%, #4b5563 50%, #374151 75%); }
-    @keyframes loading{0%{background-position:200% 0}100%{background-position:-200% 0}}
+    @keyframes ov-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) { .ov-wrap { animation: none; } }
+    .ov-stack { display: flex; flex-direction: column; gap: var(--sp-4); }
+    .ov-head { margin-bottom: var(--sp-4); }
+    .ov-title { font-size: var(--fs-2xl); font-weight: 800; color: var(--text-main); letter-spacing: -0.01em; }
+    .ov-card {
+      background: var(--surface); border: 1px solid var(--hairline);
+      border-radius: var(--radius-l); box-shadow: var(--sh-card);
+      padding: var(--sp-4);
+    }
+    .ov-card-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: var(--sp-3); margin-bottom: var(--sp-3); flex-wrap: wrap;
+    }
+    .ov-card-title {
+      font-size: var(--fs-lg); font-weight: 700; color: var(--text-main);
+      display: inline-flex; align-items: center; gap: var(--sp-2);
+    }
+    .ov-card-title i { color: var(--text-muted); font-size: var(--fs-base); }
+    /* 待处理带 */
+    .ov-attn { display: flex; flex-direction: column; gap: var(--sp-2); }
+    .ov-attn-text { flex: 1; min-width: 0; }
+    .ov-attn-act { margin-left: auto; flex: none; align-self: center; text-decoration: none; }
+    /* 数据带 */
+    .ov-band-card { padding: var(--sp-3) 0; }
+    .ov-band { display: grid; grid-template-columns: repeat(4, 1fr); }
+    .ov-cell { padding: var(--sp-2) var(--sp-4); min-width: 0; }
+    .ov-cell + .ov-cell { border-left: 1px solid var(--hairline); }
+    .ov-cell-label { font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; }
+    .ov-cell-value {
+      font-size: var(--fs-2xl); font-weight: 700; color: var(--text-main);
+      margin-top: var(--sp-1); line-height: 1.25; font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
+    }
+    .ov-cell-value--sm { font-size: var(--fs-xl); }
+    .ov-cell-sub { font-size: var(--fs-xs); color: var(--text-muted); margin-top: var(--sp-1); line-height: 1.5; }
+    .ov-foot { margin-top: var(--sp-2); padding: 0 var(--sp-1); }
+    @media (max-width: 767px) {
+      .ov-band { grid-template-columns: 1fr 1fr; }
+      .ov-cell { padding: var(--sp-2) var(--sp-3); }
+      .ov-cell + .ov-cell { border-left: none; }
+      .ov-cell:nth-child(2), .ov-cell:nth-child(4) { border-left: 1px solid var(--hairline); }
+      .ov-cell:nth-child(3), .ov-cell:nth-child(4) { border-top: 1px solid var(--hairline); }
+    }
+    /* 时间线 + 健康双列 */
+    .ov-grid { display: grid; grid-template-columns: 2fr 1fr; gap: var(--sp-4); align-items: start; }
+    @media (max-width: 900px) { .ov-grid { grid-template-columns: 1fr; } }
+    .ov-tl-group-head {
+      display: flex; align-items: baseline; gap: var(--sp-2);
+      margin: var(--sp-4) 0 var(--sp-2);
+    }
+    .ov-tl-group-head:first-child { margin-top: 0; }
+    .ov-tl-date { font-weight: 700; color: var(--text-main); font-size: var(--fs-base); font-variant-numeric: tabular-nums; }
+    .ov-tl-week { font-size: var(--fs-sm); color: var(--text-muted); }
+    a.st-row { text-decoration: none; color: inherit; cursor: pointer; }
+    .ov-row-amount { display: inline-flex; align-items: center; white-space: nowrap; font-weight: 600; color: var(--text-main); }
+    .ov-calm {
+      text-align: center; color: var(--text-muted);
+      font-size: var(--fs-sm); line-height: 1.6;
+      padding: var(--sp-5) var(--sp-3);
+    }
+    .ov-calm i { display: block; font-size: 22px; margin-bottom: var(--sp-2); opacity: 0.6; }
+    /* 健康卡 */
+    .ov-health-head { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+    .ov-health-title { font-size: var(--fs-lg); font-weight: 700; color: var(--text-main); }
+    .ov-health-lines { display: flex; flex-direction: column; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.55; }
+    .ov-health-lines strong { color: var(--text-main); font-weight: 600; }
+    .ov-health-link { color: var(--accent); text-decoration: none; font-weight: 600; white-space: nowrap; }
+    .ov-health-link:hover { color: var(--accent-hover); }
+    /* 支出构成条 */
+    .ov-bar-row { margin-bottom: var(--sp-3); }
+    .ov-bar-row:last-child { margin-bottom: 0; }
+    .ov-bar-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-3); margin-bottom: var(--sp-1); font-size: var(--fs-sm); }
+    .ov-bar-name { color: var(--text-main); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ov-bar-vals { color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .ov-bar-pct { font-weight: 600; color: var(--text-main); margin-left: var(--sp-2); }
+    .ov-bar-track { height: 8px; border-radius: var(--radius-s); background: var(--hairline); overflow: hidden; }
+    .ov-bar-fill { height: 100%; background: var(--accent); border-radius: var(--radius-s); transition: width var(--dur) var(--ease); }
+    .ov-expense-foot { margin-top: var(--sp-3); }
   </style>
 </head>
-<body class="bg-gray-50">
-  <nav class="bg-white shadow-md relative z-50">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex justify-between h-16">
-        <div class="flex items-center shrink-0">
-          <div class="flex items-center">
-            <i class="fas fa-calendar-check text-indigo-600 text-2xl mr-2"></i>
-            <span class="font-bold text-xl text-gray-800">订阅管理系统</span>
+<body class="bg-gray-100 min-h-screen">
+  <div id="st-shell" data-active="dashboard"></div>
+  <main class="st-main">
+    <div class="ov-wrap">
+      <!-- 时区门禁骨架：config 就绪前显示，不含任何真实数字 -->
+      <div class="st-gate-skel" aria-hidden="true">
+        <div class="ov-stack">
+          <div class="st-skel st-skel--strip"></div>
+          <div class="st-skel st-skel--band"></div>
+          <div class="st-skel st-skel--card"></div>
+          <div class="st-skel st-skel--card"></div>
+        </div>
+      </div>
+
+      <div class="st-tz-content">
+        <div class="ov-head">
+          <h1 class="ov-title">概览</h1>
+          <p class="st-caption" id="ov-today"></p>
+        </div>
+
+        <div id="ov-blocks" class="ov-stack">
+          <!-- 1. 待处理带（有事项才渲染） -->
+          <div id="ov-attention" class="ov-attn" hidden></div>
+
+          <!-- 2. 数据带 -->
+          <div id="ov-band-block">
+            <div class="ov-card ov-band-card"><div class="st-skel st-skel--band"></div></div>
           </div>
-          <span id="systemTimeDisplay" class="ml-4 text-base text-indigo-600 font-normal hidden md:block pt-1"></span>
-        </div>
-        
-        <div class="hidden md:flex items-center space-x-4 ml-auto">
-          <a href="/admin/dashboard" class="text-indigo-600 border-b-2 border-indigo-600 px-3 py-2 rounded-md text-sm font-medium transition">
-            <i class="fas fa-chart-line mr-1"></i>仪表盘
-          </a>
-          <a href="/admin" class="text-gray-700 hover:text-gray-900 border-b-2 border-transparent hover:border-gray-300 px-3 py-2 rounded-md text-sm font-medium transition">
-            <i class="fas fa-list mr-1"></i>订阅列表
-          </a>
-          <a href="/admin/notify-logs" class="text-gray-700 hover:text-gray-900 border-b-2 border-transparent hover:border-gray-300 px-3 py-2 rounded-md text-sm font-medium transition">
-            <i class="fas fa-history mr-1"></i>通知历史
-          </a>
-          <a href="/admin/config" class="text-gray-700 hover:text-gray-900 border-b-2 border-transparent hover:border-gray-300 px-3 py-2 rounded-md text-sm font-medium transition">
-            <i class="fas fa-cog mr-1"></i>系统配置
-          </a>
-          <a href="/api/logout" class="text-gray-700 hover:text-red-600 border-b-2 border-transparent hover:border-red-300 px-3 py-2 rounded-md text-sm font-medium transition">
-            <i class="fas fa-sign-out-alt mr-1"></i>退出登录
-          </a>
-        </div>
 
-        <div class="flex items-center md:hidden ml-auto">
-          <button id="mobile-menu-btn" type="button" aria-expanded="false" aria-label="切换导航菜单" class="text-gray-600 hover:text-indigo-600 focus:outline-none p-2 rounded-md hover:bg-gray-100 active:bg-gray-200 transition-colors">
-            <i class="fas fa-bars text-xl"></i>
-          </button>
-        </div>
-      </div>
-    </div>
+          <div class="ov-grid">
+            <!-- 3. 未来 30 天时间线 -->
+            <section class="ov-card" id="ov-timeline-card" aria-label="未来 30 天">
+              <div class="ov-card-head">
+                <span class="ov-card-title"><i class="fas fa-stream"></i>未来 30 天</span>
+                <div class="st-seg" role="group" aria-label="时间线视图切换">
+                  <button type="button" class="st-seg-btn is-active" data-seg-group="timeline" data-seg-value="upcoming">即将续费</button>
+                  <button type="button" class="st-seg-btn" data-seg-group="timeline" data-seg-value="recent">最近支付</button>
+                </div>
+              </div>
+              <div id="ov-timeline-body">
+                <div class="st-skel st-skel--row" style="margin-bottom: var(--sp-2);"></div>
+                <div class="st-skel st-skel--row"></div>
+              </div>
+              <div id="ov-recent-body" hidden>
+                <div class="st-skel st-skel--row"></div>
+              </div>
+            </section>
 
-    <div id="mobile-menu" class="hidden md:hidden bg-white border-t border-b border-gray-200 w-full">
-      <div class="px-4 pt-2 pb-4 space-y-2">
-        <div id="mobileTimeDisplay" class="px-3 py-2 text-xs text-indigo-600 text-right border-b border-gray-100 mb-2"></div>
-        <a href="/admin/dashboard" class="block px-3 py-3 rounded-md text-base font-medium text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 active:bg-indigo-100 transition-colors">
-          <i class="fas fa-chart-line w-6 text-center mr-2"></i>仪表盘
-        </a>
-        <a href="/admin" class="block px-3 py-3 rounded-md text-base font-medium text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 active:bg-indigo-100 transition-colors">
-          <i class="fas fa-list w-6 text-center mr-2"></i>订阅列表
-        </a>
-        <a href="/admin/notify-logs" class="block px-3 py-3 rounded-md text-base font-medium text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 active:bg-indigo-100 transition-colors">
-          <i class="fas fa-history w-6 text-center mr-2"></i>通知历史
-        </a>
-        <a href="/admin/config" class="block px-3 py-3 rounded-md text-base font-medium text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 active:bg-indigo-100 transition-colors">
-          <i class="fas fa-cog w-6 text-center mr-2"></i>系统配置
-        </a>
-        <a href="/api/logout" class="block px-3 py-3 rounded-md text-base font-medium text-gray-700 hover:bg-red-50 hover:text-red-600 active:bg-red-100 transition-colors">
-          <i class="fas fa-sign-out-alt w-6 text-center mr-2"></i>退出登录
-        </a>
-      </div>
-    </div>
-  </nav>
-
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <div class="mb-6">
-      <h2 class="text-2xl font-bold text-gray-800">📊 仪表板</h2>
-      <p class="text-sm text-gray-500 mt-1">订阅费用和活动概览（统计金额已折合为 CNY）</p>
-    </div>
-
-    <div class="bg-white rounded-lg shadow-md overflow-hidden mb-6">
-      <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <i class="fas fa-history text-indigo-500"></i>
-          <h3 class="text-lg font-medium text-gray-900">自动提醒任务状态</h3>
-        </div>
-        <span class="px-3 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">Cron 可观测性</span>
-      </div>
-      <div class="p-6" id="schedulerStatus">
-        <div class="loading-skeleton"></div>
-      </div>
-    </div>
-
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="text-lg font-medium text-gray-900"><i class="fas fa-chart-pie text-indigo-500 mr-2"></i>数据概览</h2>
-      <button id="refreshBtn" onclick="manualRefresh()" class="text-sm text-indigo-600 hover:text-indigo-800 px-3 py-1 rounded hover:bg-indigo-50 transition">
-        <i class="fas fa-sync-alt mr-1"></i>刷新
-      </button>
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6" id="statsGrid">
-      <div class="loading-skeleton"></div>
-      <div class="loading-skeleton"></div>
-      <div class="loading-skeleton"></div>
-    </div>
-
-    <div class="bg-white rounded-lg shadow-md overflow-hidden mb-6">
-      <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <i class="fas fa-calendar-check text-blue-500"></i>
-          <h3 class="text-lg font-medium text-gray-900">最近支付</h3>
-        </div>
-        <span class="px-3 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">过去7天</span>
-      </div>
-      <div class="p-6" id="recentPayments">
-        <div class="loading-skeleton"></div>
-      </div>
-    </div>
-
-    <div class="bg-white rounded-lg shadow-md overflow-hidden mb-6">
-      <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <i class="fas fa-clock text-yellow-500"></i>
-          <h3 class="text-lg font-medium text-gray-900">即将续费</h3>
-        </div>
-        <span class="px-3 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">未来7天</span>
-      </div>
-      <div class="p-6" id="upcomingRenewals">
-        <div class="loading-skeleton"></div>
-      </div>
-    </div>
-
-    <div class="bg-white rounded-lg shadow-md overflow-hidden mb-6">
-      <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <i class="fas fa-stream text-indigo-500"></i>
-          <h3 class="text-lg font-medium text-gray-900">自动提醒任务历史（最近10次）</h3>
-        </div>
-      </div>
-      <div class="p-6" id="schedulerStatusHistory">
-        <div class="loading-skeleton"></div>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <div class="bg-white rounded-lg shadow-md overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <i class="fas fa-chart-bar text-purple-500"></i>
-            <h3 class="text-lg font-medium text-gray-900">按类型支出排行</h3>
+            <!-- 3b. 健康卡 -->
+            <section class="ov-card" id="ov-health-card" aria-label="提醒健康">
+              <div id="ov-health-body">
+                <div class="st-skel st-skel--strip" style="margin-bottom: var(--sp-2);"></div>
+                <div class="st-skel st-skel--strip"></div>
+              </div>
+            </section>
           </div>
-          <span class="px-3 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">年度统计 (折合CNY)</span>
-        </div>
-        <div class="p-6" id="expenseByType">
-          <div class="loading-skeleton"></div>
-        </div>
-      </div>
 
-      <div class="bg-white rounded-lg shadow-md overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <i class="fas fa-folder text-green-500"></i>
-            <h3 class="text-lg font-medium text-gray-900">按分类支出统计</h3>
-          </div>
-          <span class="px-3 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">年度统计 (折合CNY)</span>
+          <!-- 4. 支出构成 -->
+          <section class="ov-card" id="ov-expense-card" aria-label="支出构成">
+            <div class="ov-card-head">
+              <span class="ov-card-title"><i class="fas fa-chart-bar"></i>支出构成</span>
+              <div class="st-seg" role="group" aria-label="支出构成维度切换">
+                <button type="button" class="st-seg-btn is-active" data-seg-group="expense" data-seg-value="type">按类型</button>
+                <button type="button" class="st-seg-btn" data-seg-group="expense" data-seg-value="category">按分类</button>
+              </div>
+            </div>
+            <div id="ov-expense-body">
+              <div class="st-skel st-skel--strip" style="margin-bottom: var(--sp-2);"></div>
+              <div class="st-skel st-skel--strip" style="margin-bottom: var(--sp-2);"></div>
+              <div class="st-skel st-skel--strip"></div>
+            </div>
+            <p class="st-caption ov-expense-foot" id="ov-expense-foot"></p>
+          </section>
         </div>
-        <div class="p-6" id="expenseByCategory">
-          <div class="loading-skeleton"></div>
+
+        <!-- 5. 零订阅真空态 -->
+        <div id="ov-empty" hidden>
+          <div class="st-empty st-empty--blank">
+            <div class="st-empty-icon"><i class="fas fa-calendar-plus"></i></div>
+            <div class="st-empty-title">还没有任何订阅</div>
+            <div class="st-empty-desc">添加第一个订阅后，这里会汇总即将到期的事项、本月支出与提醒健康状态。</div>
+            <div class="st-empty-actions">
+              <a class="st-btn st-btn--primary" href="/admin" style="text-decoration: none;"><i class="fas fa-plus"></i>&nbsp;添加第一个订阅</a>
+            </div>
+          </div>
         </div>
       </div>
     </div>
-  </div>
+  </main>
 
   <script>
-    // 统一 API 请求封装：401 自动跳转登录页
-    async function apiFetch(url, options) {
-      const response = await fetch(url, options);
-      if (response.status === 401) {
-        window.location.href = '/';
-        throw new Error('AUTH_EXPIRED');
-      }
-      return response;
-    }
+    (function() {
+      'use strict';
 
-    // 定义货币符号映射
-    const currencySymbols = {
-      'CNY': '¥', 'USD': '$', 'HKD': 'HK$', 'TWD': 'NT$', 
-      'JPY': '¥', 'EUR': '€', 'GBP': '£', 'KRW': '₩', 'TRY': '₺'
-    };
-    function getSymbol(currency) {
-      return currencySymbols[currency] || '¥';
-    }
-
-    // 前端统一本地时区显示
-    async function showSystemTime() {
-      try {
-        const localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-
-        function formatTimezoneDisplay(tz) {
-          try {
-            const now = new Date();
-            const dtf = new Intl.DateTimeFormat('en-US', {
-              timeZone: tz,
-              hour12: false,
-              year: 'numeric', month: '2-digit', day: '2-digit',
-              hour: '2-digit', minute: '2-digit', second: '2-digit'
-            });
-            const parts = dtf.formatToParts(now);
-            const get = type => Number(parts.find(x => x.type === type).value);
-            const target = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
-            const utc = now.getTime();
-            const offset = Math.round((target - utc) / (1000 * 60 * 60));
-            const offsetStr = offset >= 0 ? '+' + offset : offset;
-            return `${tz} (UTC${offsetStr})`;
-          } catch (error) {
-            console.error('格式化时区显示失败:', error);
-            return tz;
-          }
-        }
-
-        function update() {
-          const now = new Date();
-          const timeStr = now.toLocaleString('zh-CN', {
-            timeZone: localTimezone,
-            year: 'numeric', month: '2-digit', day: '2-digit',
-            hour: '2-digit', minute: '2-digit', second: '2-digit'
-          });
-          const tzStr = formatTimezoneDisplay(localTimezone);
-          const el = document.getElementById('systemTimeDisplay');
-          if (el) {
-            el.textContent = `${timeStr}  ${tzStr}`;
-          }
-          const mobileEl = document.getElementById('mobileTimeDisplay');
-          if (mobileEl) {
-            mobileEl.textContent = `${timeStr} ${tzStr}`;
-          }
-        }
-
-        update();
-        setInterval(update, 1000);
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
-    async function loadDashboardData(){
-      try {
-        const r=await apiFetch('/api/dashboard/stats');
-        const d=await r.json();
-        if(!d.success) throw new Error(d.message||'加载失败');
-        
-        const data=d.data;
-
-        const schedulerStatusEl = document.getElementById('schedulerStatus');
-        if (schedulerStatusEl) {
-          const status = data.schedulerStatus;
-          if (!status) {
-            schedulerStatusEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🕐</div><div class="empty-state-text">暂无定时任务执行记录（等待下一次 Cron）</div></div>';
-          } else {
-            const sendResult = status.sendResult || {};
-            const runAt = status.lastRunAt ? new Date(status.lastRunAt).toLocaleString('zh-CN') : '未知';
-            const configuredHours = Array.isArray(status.configuredHours) && status.configuredHours.length > 0
-              ? status.configuredHours.join(', ')
-              : '全部时段';
-            const sentBadge = status.sent
-              ? '<span class="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-700">本次有发送</span>'
-              : '<span class="px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-700">本次未发送</span>';
-
-            schedulerStatusEl.innerHTML = `
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div class="bg-gray-50 rounded-md p-3">
-                  <div class="text-gray-500">最近执行时间</div>
-                  <div class="text-gray-900 font-medium mt-1">${runAt}</div>
-                </div>
-                <div class="bg-gray-50 rounded-md p-3">
-                  <div class="text-gray-500">状态</div>
-                  <div class="mt-1">${sentBadge}</div>
-                </div>
-                <div class="bg-gray-50 rounded-md p-3">
-                  <div class="text-gray-500">当前小时 / 配置时段（UTC）</div>
-                  <div class="text-gray-900 font-medium mt-1">${status.currentHour || '--'} / ${configuredHours}</div>
-                </div>
-                <div class="bg-gray-50 rounded-md p-3">
-                  <div class="text-gray-500">检查与命中</div>
-                  <div class="text-gray-900 font-medium mt-1">检查 ${status.checkedSubscriptions || 0} 条，命中 ${status.expiringMatched || 0} 条</div>
-                </div>
-                <div class="bg-gray-50 rounded-md p-3 md:col-span-2">
-                  <div class="text-gray-500">发送结果</div>
-                  <div class="text-gray-900 font-medium mt-1">尝试 ${sendResult.attempted || 0} 个渠道，成功 ${sendResult.successCount || 0}，失败 ${sendResult.failedCount || 0}，去重跳过 ${status.dedupeSkipped || 0}</div>
-                  <div class="text-xs text-gray-500 mt-1">${status.reason || '暂无详情'}</div>
-                </div>
-              </div>
-            `;
-          }
-        }
-
-        const schedulerHistory = Array.isArray(data.schedulerStatusHistory) ? data.schedulerStatusHistory : [];
-        const schedulerHistoryEl = document.getElementById('schedulerStatusHistory');
-        if (schedulerHistoryEl) {
-          if (schedulerHistory.length === 0) {
-            schedulerHistoryEl.innerHTML = '<div class="text-sm text-gray-500">暂无历史记录</div>';
-          } else {
-            schedulerHistoryEl.innerHTML = schedulerHistory.slice(0, 10).map(item => {
-              const when = item.lastRunAt ? new Date(item.lastRunAt).toLocaleString('zh-CN') : '未知时间';
-              const sent = item.sent ? '已发送' : '未发送';
-              const reason = item.reason || '-';
-              return `<div class="py-2 border-b border-gray-100 last:border-b-0 text-sm"><div class="font-medium text-gray-800">${when} · ${sent}</div><div class="text-xs text-gray-500 mt-1">${reason}</div></div>`;
-            }).join('');
-          }
-        }
-
-        document.getElementById('statsGrid').innerHTML=`
-          <div class="stat-card">
-            <div class="stat-card-header">月度支出 (CNY)</div>
-            <div class="stat-card-value">¥${data.monthlyExpense.amount.toFixed(2)}</div>
-            <div class="stat-card-subtitle">本月折合支出</div>
-            <div class="stat-card-trend ${data.monthlyExpense.trendDirection}">
-              <i class="fas fa-arrow-${data.monthlyExpense.trendDirection==='up'?'up':data.monthlyExpense.trendDirection==='down'?'down':'right'}"></i>
-              ${data.monthlyExpense.trend}%
-            </div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-card-header">年度支出 (CNY)</div>
-            <div class="stat-card-value">¥${data.yearlyExpense.amount.toFixed(2)}</div>
-            <div class="stat-card-subtitle">月均支出: ¥${data.yearlyExpense.monthlyAverage.toFixed(2)}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-card-header">活跃订阅</div>
-            <div class="stat-card-value">${data.activeSubscriptions.active}</div>
-            <div class="stat-card-subtitle">总订阅数: ${data.activeSubscriptions.total}</div>
-            ${data.activeSubscriptions.expiringSoon>0?`<div class="stat-card-trend down"><i class="fas fa-exclamation-circle"></i>${data.activeSubscriptions.expiringSoon} 即将到期</div>`:''}
-          </div>
-        `;
-        
-        const rp=document.getElementById('recentPayments');
-        rp.innerHTML=data.recentPayments.length===0?'<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">过去7天内没有支付记录</div></div>':
-        data.recentPayments.map(s=>`
-          <div class="list-item">
-            <div class="list-item-content">
-              <div class="list-item-name">${s.name}</div>
-              <div class="list-item-meta">
-                <span><i class="fas fa-calendar"></i> ${new Date(s.paymentDate).toLocaleDateString('zh-CN')}</span>
-                ${s.customType?`<span class="list-item-badge">${s.customType}</span>`:''}
-              </div>
-            </div>
-            <div class="list-item-amount">${getSymbol(s.currency)}${(s.amount||0).toFixed(2)}</div>
-          </div>
-        `).join('');
-        
-        const ur=document.getElementById('upcomingRenewals');
-        ur.innerHTML=data.upcomingRenewals.length===0?'<div class="empty-state"><div class="empty-state-icon">✅</div><div class="empty-state-text">未来7天内没有即将续费的订阅</div></div>':
-        data.upcomingRenewals.map(s=>`
-          <div class="list-item">
-            <div class="list-item-content">
-              <div class="list-item-name">${s.name}</div>
-              <div class="list-item-meta">
-                <span><i class="fas fa-clock"></i> ${new Date(s.renewalDate).toLocaleDateString('zh-CN')}</span>
-                <span style="color:#f59e0b;font-weight:600">${s.daysUntilRenewal} 天后</span>
-                ${s.customType?`<span class="list-item-badge">${s.customType}</span>`:''}
-              </div>
-            </div>
-            <div class="list-item-amount">${getSymbol(s.currency)}${(s.amount||0).toFixed(2)}</div>
-          </div>
-        `).join('');
-        
-        const et=document.getElementById('expenseByType');
-        et.innerHTML=data.expenseByType.length===0?'<div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-text">暂无支出数据</div></div>':
-        data.expenseByType.map((item,i)=>`
-          <div class="ranking-item">
-            <div class="ranking-item-header">
-              <div class="ranking-item-name">${item.type}</div>
-              <div class="ranking-item-value">
-                <span class="ranking-item-amount">¥${item.amount.toFixed(2)}</span>
-                <span class="ranking-item-percentage">${item.percentage}%</span>
-              </div>
-            </div>
-            <div class="ranking-progress">
-              <div class="ranking-progress-bar color-${(i%5)+1}" style="width:${item.percentage}%"></div>
-            </div>
-          </div>
-        `).join('');
-        
-        const ec=document.getElementById('expenseByCategory');
-        ec.innerHTML=data.expenseByCategory.length===0?'<div class="empty-state"><div class="empty-state-icon">📂</div><div class="empty-state-text">暂无支出数据</div></div>':
-        data.expenseByCategory.map((item,i)=>`
-          <div class="ranking-item">
-            <div class="ranking-item-header">
-              <div class="ranking-item-name">${item.category}</div>
-              <div class="ranking-item-value">
-                <span class="ranking-item-amount">¥${item.amount.toFixed(2)}</span>
-                <span class="ranking-item-percentage">${item.percentage}%</span>
-              </div>
-            </div>
-            <div class="ranking-progress">
-              <div class="ranking-progress-bar color-${(i%5)+1}" style="width:${item.percentage}%"></div>
-            </div>
-          </div>
-        `).join('');
-      } catch(e){
-        console.error('加载仪表盘数据失败:',e);
-        document.getElementById('statsGrid').innerHTML='<div class="empty-state"><div class="empty-state-icon">❌</div><div class="empty-state-text">加载失败: '+(e.message||'网络错误')+'</div><button onclick="manualRefresh()" class="mt-3 text-sm text-indigo-600 hover:text-indigo-800 px-3 py-1 rounded border border-indigo-200 hover:bg-indigo-50"><i class="fas fa-redo mr-1"></i>重试</button></div>';
-      }
-    }
-    
-    // 手动刷新
-    async function manualRefresh() {
-      const btn = document.getElementById('refreshBtn');
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>刷新中';
-      btn.disabled = true;
-      await loadDashboardData();
-      btn.innerHTML = '<i class="fas fa-sync-alt mr-1"></i>刷新';
-      btn.disabled = false;
-    }
-    window.manualRefresh = manualRefresh;
-
-    // 初始化时间显示和数据加载
-    showSystemTime();
-    loadDashboardData();
-
-    // 自动刷新：页面可见时每 60 秒刷新，不可见时暂停
-    let refreshTimer = setInterval(loadDashboardData, 60000);
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
-        clearInterval(refreshTimer);
-        refreshTimer = null;
-      } else {
-        loadDashboardData();
-        refreshTimer = setInterval(loadDashboardData, 60000);
-      }
-    });
-
-    // --- 移动端菜单控制脚本 ---
-    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
-    const mobileMenu = document.getElementById('mobile-menu');
-    
-    if (mobileMenuBtn && mobileMenu) {
-      const syncMobileMenuState = () => {
-        const icon = mobileMenuBtn.querySelector('i');
-        const isHidden = mobileMenu.classList.contains('hidden');
-        mobileMenuBtn.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
-        if (icon) {
-          icon.classList.toggle('fa-bars', isHidden);
-          icon.classList.toggle('fa-times', !isHidden);
-        }
+      var state = {
+        subs: null,          // /api/subscriptions 数组
+        stats: null,         // /api/dashboard/stats 的 data
+        health: null,        // ST.health() 结果
+        nextReminder: undefined, // { name, fireTime } | null（undefined = 尚未算出）
+        timelineSeg: 'upcoming',
+        expenseSeg: 'type',
+        zero: false
       };
 
-      mobileMenuBtn.addEventListener('click', () => {
-        mobileMenu.classList.toggle('hidden');
-        syncMobileMenuState();
-      });
+      function $(id) { return document.getElementById(id); }
 
-      mobileMenu.querySelectorAll('a').forEach(link => {
-        link.addEventListener('click', () => {
-          mobileMenu.classList.add('hidden');
-          syncMobileMenuState();
+      function apiJson(url) {
+        return fetch(url, { credentials: 'same-origin' }).then(function(r) {
+          if (r.status === 401) { window.location.href = '/'; throw new Error('登录已过期'); }
+          if (!r.ok) throw new Error('请求失败（HTTP ' + r.status + '）');
+          return r.json();
         });
-      });
+      }
 
-      document.addEventListener('click', (event) => {
-        if (mobileMenu.classList.contains('hidden')) return;
-        if (!mobileMenu.contains(event.target) && !mobileMenuBtn.contains(event.target)) {
-          mobileMenu.classList.add('hidden');
-          syncMobileMenuState();
+      /* 静默刷新时淡变替换；首次/重试加载直接替换 */
+      function setHTML(el, html, fade) {
+        if (!el) return;
+        if (fade) {
+          el.style.transition = 'opacity var(--dur) var(--ease)';
+          el.style.opacity = '0.4';
+        }
+        el.innerHTML = html;
+        if (fade) {
+          requestAnimationFrame(function() {
+            requestAnimationFrame(function() { el.style.opacity = '1'; });
+          });
+        }
+      }
+
+      function blockErrorHTML(msg, retryKey) {
+        return '<div class="st-empty st-empty--error">' +
+          '<div class="st-empty-icon"><i class="fas fa-exclamation-circle"></i></div>' +
+          '<div class="st-empty-title">加载失败</div>' +
+          '<div class="st-empty-desc">' + ST.esc(msg || '网络错误') + '</div>' +
+          '<div class="st-empty-actions"><button type="button" class="st-btn" data-retry="' + retryKey + '"><i class="fas fa-redo"></i>&nbsp;重试</button></div>' +
+          '</div>';
+      }
+
+      /* 按币种分组求和（原始金额），返回 [[currency, total], ...] 按金额降序 */
+      function sumByCurrency(subs, amountOf) {
+        var map = {};
+        subs.forEach(function(s) {
+          var v = amountOf(s);
+          if (v === null || v === undefined || !(Number(v) > 0)) return;
+          var cur = String(s.currency || 'CNY').toUpperCase();
+          map[cur] = (map[cur] || 0) + Number(v);
+        });
+        return Object.keys(map).map(function(k) { return [k, map[k]]; })
+          .sort(function(a, b) { return b[1] - a[1]; });
+      }
+
+      function moneySumHTML(pairs) {
+        return pairs.map(function(p) { return ST.fmtMoney(p[1], p[0]); }).join(' + ');
+      }
+
+      function activeSubs() {
+        return (state.subs || []).filter(function(s) { return s.isActive !== false; });
+      }
+
+      /* ---------- 待处理带 ---------- */
+      function renderAttention(fade) {
+        var box = $('ov-attention');
+        if (!box || state.zero) return;
+        var parts = [];
+        if (state.subs) {
+          var overdue = [], today = [];
+          activeSubs().forEach(function(s) {
+            var d = ST.daysDiff(s.expiryDate);
+            if (!isFinite(d)) return;
+            if (d < 0) overdue.push(s); else if (d === 0) today.push(s);
+          });
+          overdue.sort(function(a, b) { return ST.daysDiff(a.expiryDate) - ST.daysDiff(b.expiryDate); });
+          if (overdue.length > 0) {
+            var sum = sumByCurrency(overdue, function(s) { return s.amount; });
+            var txt = '<strong>已过期 ' + overdue.length + ' 项</strong>' +
+              (overdue.length === 1 ? ' · ' + ST.esc(overdue[0].name) : '') +
+              (sum.length ? ' · 合计 ' + moneySumHTML(sum) : '');
+            parts.push('<div class="st-alert st-alert--error"><i class="fas fa-exclamation-circle"></i>' +
+              '<div class="ov-attn-text">' + txt + '</div>' +
+              '<a class="st-btn st-btn--sm ov-attn-act" href="/admin?focus=' + encodeURIComponent(overdue[0].id) + '">查看</a></div>');
+          }
+          if (today.length > 0) {
+            var txt2 = '<strong>今天到期 ' + today.length + ' 项</strong>' +
+              (today.length === 1 ? ' · ' + ST.esc(today[0].name) : '');
+            parts.push('<div class="st-alert st-alert--warn"><i class="fas fa-bell"></i>' +
+              '<div class="ov-attn-text">' + txt2 + '</div>' +
+              '<a class="st-btn st-btn--sm ov-attn-act" href="/admin?focus=' + encodeURIComponent(today[0].id) + '">查看</a></div>');
+          }
+        }
+        var h = state.health;
+        if (h && (h.tone === 'warn' || h.tone === 'danger')) {
+          var hTxt = '<strong>' + ST.esc(h.label) + '</strong>' + (h.detail ? ' · ' + ST.esc(h.detail) : '');
+          parts.push('<div class="st-alert ' + (h.tone === 'danger' ? 'st-alert--error' : 'st-alert--warn') + '"><i class="fas fa-heartbeat"></i>' +
+            '<div class="ov-attn-text">' + hTxt + '</div>' +
+            '<a class="st-btn st-btn--sm ov-attn-act" href="/admin/channels">去修复</a></div>');
+        }
+        box.hidden = parts.length === 0;
+        setHTML(box, parts.join(''), fade);
+      }
+
+      /* ---------- 数据带 ---------- */
+      function monthlyEstimatePairs() {
+        return sumByCurrency(activeSubs(), function(s) {
+          if (!s.amount || !(Number(s.amount) > 0)) return null;
+          var v = Number(s.periodValue) || 1;
+          var months;
+          if (s.periodUnit === 'year') months = v * 12;
+          else if (s.periodUnit === 'day') months = v / 30.4375;
+          else months = v;
+          if (!(months > 0)) return null;
+          return Number(s.amount) / months;
+        });
+      }
+
+      function renderBand(fade) {
+        var block = $('ov-band-block');
+        if (!block || !state.subs) return;
+        var act = activeSubs();
+        var soon = 0, todayCount = 0;
+        act.forEach(function(s) {
+          if (ST.isSoon(s)) soon++;
+          if (ST.daysDiff(s.expiryDate) === 0) todayCount++;
+        });
+        var est = monthlyEstimatePairs();
+        var estHTML, estSub;
+        if (est.length === 0) {
+          estHTML = '—';
+          estSub = '暂无带金额的活跃订阅';
+        } else {
+          estHTML = '约 ' + ST.fmtMoney(est[0][1], est[0][0]);
+          if (est.length > 1) {
+            estHTML += '<div class="ov-cell-sub">另有 ' +
+              est.slice(1).map(function(p) { return ST.fmtMoney(p[1], p[0]); }).join(' · ') + '</div>';
+          }
+          estSub = '按订阅周期折算的月度估算';
+        }
+        var nr = state.nextReminder;
+        var nrValue, nrSub;
+        if (nr === undefined) { nrValue = '…'; nrSub = '正在计算'; }
+        else if (nr === null) { nrValue = '—'; nrSub = '暂无计划中的提醒'; }
+        else {
+          nrValue = ST.fmtDateInTz(nr.fireTime);
+          nrSub = ST.esc(nr.name) + ' · ' + ST.fmtTimeInTz(nr.fireTime);
+        }
+        var inactive = state.subs.length - act.length;
+        var html = '<div class="ov-card ov-band-card"><div class="ov-band">' +
+          '<div class="ov-cell"><div class="ov-cell-label">7 天内到期</div>' +
+            '<div class="ov-cell-value">' + soon + ' <span style="font-size: var(--fs-base); font-weight: 600;">项</span></div>' +
+            '<div class="ov-cell-sub">' + (todayCount > 0 ? '其中今天到期 ' + todayCount + ' 项' : '未来 7 天内（含今天）') + '</div></div>' +
+          '<div class="ov-cell"><div class="ov-cell-label">本月预计支出</div>' +
+            '<div class="ov-cell-value">' + estHTML + '</div>' +
+            '<div class="ov-cell-sub">' + estSub + '</div></div>' +
+          '<div class="ov-cell"><div class="ov-cell-label">活跃订阅</div>' +
+            '<div class="ov-cell-value">' + act.length + ' <span style="font-size: var(--fs-base); font-weight: 600;">个</span></div>' +
+            '<div class="ov-cell-sub">共 ' + state.subs.length + ' 个订阅' + (inactive > 0 ? ' · ' + inactive + ' 个已停用' : '') + '</div></div>' +
+          '<div class="ov-cell"><div class="ov-cell-label">下次提醒</div>' +
+            '<div class="ov-cell-value ov-cell-value--sm">' + nrValue + '</div>' +
+            '<div class="ov-cell-sub">' + nrSub + '</div></div>' +
+          '</div></div>' +
+          '<p class="st-caption ov-foot">「即将到期」指到期日在 7 天内（含今天），全站统一口径。</p>';
+        setHTML(block, html, fade);
+      }
+
+      /* 下次提醒：逐订阅调后端 /next-reminder（后端 getNextFireTime 单一事实源） */
+      function computeNextReminder() {
+        var act = activeSubs();
+        if (act.length === 0) { state.nextReminder = null; renderBand(false); return; }
+        var jobs = act.map(function(s) {
+          return apiJson('/api/subscriptions/' + encodeURIComponent(s.id) + '/next-reminder')
+            .then(function(j) {
+              var nr = j && j.nextReminder;
+              return (nr && nr.nextFireTime) ? { name: s.name, fireTime: nr.nextFireTime } : null;
+            })
+            .catch(function() { return null; });
+        });
+        Promise.all(jobs).then(function(list) {
+          var best = null;
+          list.forEach(function(x) {
+            if (x && (!best || Date.parse(x.fireTime) < Date.parse(best.fireTime))) best = x;
+          });
+          state.nextReminder = best;
+          renderBand(false);
+        });
+      }
+
+      /* ---------- 时间线 ---------- */
+      function weekdayLabel(iso) {
+        try {
+          return new Intl.DateTimeFormat('zh-CN', { timeZone: ST.tz(), weekday: 'short' }).format(new Date(iso));
+        } catch (e) { return ''; }
+      }
+
+      function renderTimeline(fade) {
+        var body = $('ov-timeline-body');
+        if (!body || !state.subs) return;
+        var items = [];
+        activeSubs().forEach(function(s) {
+          var d = ST.daysDiff(s.expiryDate);
+          if (isFinite(d) && d >= 0 && d <= 30) items.push({ sub: s, days: d });
+        });
+        items.sort(function(a, b) {
+          var t = Date.parse(a.sub.expiryDate) - Date.parse(b.sub.expiryDate);
+          return t !== 0 ? t : String(a.sub.name).localeCompare(String(b.sub.name));
+        });
+        if (items.length === 0) {
+          setHTML(body, '<div class="ov-calm"><i class="fas fa-calendar-check"></i>未来 30 天没有到期项</div>', fade);
+          return;
+        }
+        var groups = [], byKey = {};
+        items.forEach(function(it) {
+          var key = ST.fmtDateInTz(it.sub.expiryDate);
+          if (!byKey[key]) { byKey[key] = { key: key, iso: it.sub.expiryDate, rows: [] }; groups.push(byKey[key]); }
+          byKey[key].rows.push(it.sub);
+        });
+        var html = groups.map(function(g) {
+          var rows = g.rows.map(function(s) {
+            var meta = s.customType ? '<div class="st-row-meta">' + ST.esc(s.customType) + '</div>' : '';
+            var amount = (s.amount !== null && s.amount !== undefined && s.amount !== '')
+              ? '<span class="ov-row-amount">' + ST.fmtMoney(s.amount, s.currency) + '</span>'
+              : '<span class="st-caption">未设置金额</span>';
+            return '<a class="st-row" href="/admin?focus=' + encodeURIComponent(s.id) + '">' +
+              '<div class="st-row-main"><div class="st-row-title">' + ST.esc(s.name) + '</div>' + meta + '</div>' +
+              '<div class="st-row-actions">' + ST.chip(s) + '</div>' +
+              '<div class="st-row-actions">' + amount + '</div></a>';
+          }).join('');
+          return '<div class="ov-tl-group-head"><span class="ov-tl-date">' + ST.esc(g.key) + '</span>' +
+            '<span class="ov-tl-week">' + ST.esc(weekdayLabel(g.iso)) + '</span></div>' +
+            '<div class="st-row-list">' + rows + '</div>';
+        }).join('');
+        setHTML(body, html, fade);
+      }
+
+      function renderRecent(fade) {
+        var body = $('ov-recent-body');
+        if (!body) return;
+        if (!state.stats) {
+          setHTML(body, '<div class="st-skel st-skel--row"></div>', false);
+          return;
+        }
+        var list = Array.isArray(state.stats.recentPayments) ? state.stats.recentPayments : [];
+        if (list.length === 0) {
+          setHTML(body, '<div class="ov-calm"><i class="fas fa-receipt"></i>过去 7 天没有支付记录</div>', fade);
+          return;
+        }
+        var html = '<div class="st-row-list">' + list.map(function(p) {
+          var meta = ST.fmtDateInTz(p.paymentDate) + (p.note ? ' · ' + ST.esc(p.note) : '');
+          return '<div class="st-row"><div class="st-row-main"><div class="st-row-title">' + ST.esc(p.name) + '</div>' +
+            '<div class="st-row-meta">' + ST.esc(meta) + '</div></div>' +
+            '<div class="st-row-actions"><span class="ov-row-amount">' + ST.fmtMoney(p.amount, p.currency) + '</span></div></div>';
+        }).join('') + '</div>';
+        setHTML(body, html, fade);
+      }
+
+      /* ---------- 健康卡 ---------- */
+      function renderHealth(h, sched, notes, fade) {
+        var body = $('ov-health-body');
+        if (!body) return;
+        var unknown = h.tone === 'unknown';
+        var title = unknown ? '暂无调度记录' : h.label;
+        var lines = [];
+        if (unknown) {
+          lines.push('<div>调度器完成首次检查后，这里会显示提醒健康状态。</div>');
+        } else {
+          if (h.detail) lines.push('<div>' + ST.esc(h.detail) + '</div>');
+          if (h.lastRunAt) {
+            lines.push('<div>上次检查：<strong>' + ST.esc(ST.fmtDateTimeInTz(h.lastRunAt)) + '</strong>（' + ST.esc(ST.tz()) + '）</div>');
+          }
+          var latest = sched && sched[0];
+          if (latest) {
+            var tone = ST.schedTone(latest);
+            var line = '最近结论：<strong>' + ST.esc(tone.label) + '</strong>' +
+              ' · 命中 ' + (latest.matchedCount || 0) + ' · 发送 ' + (latest.sentCount || 0);
+            if (latest.reason) line += '<br>' + ST.esc(latest.reason);
+            lines.push('<div>' + line + '</div>');
+          }
+          var total = notes ? notes.length : 0;
+          if (total > 0) {
+            var okCount = notes.filter(function(n) { return n.status === 'success'; }).length;
+            var rate = Math.round(okCount / total * 100);
+            lines.push('<div>近 7 天送达率：<strong>' + rate + '%</strong>（成功 ' + okCount + ' / 共 ' + total + ' 条）</div>');
+          } else {
+            lines.push('<div>近 7 天暂无发送记录</div>');
+          }
+          if (h.failedRecent > 0) {
+            lines.push('<div>近 7 天有 <strong>' + h.failedRecent + ' 次</strong>发送失败 <a class="ov-health-link" href="/admin/notify-logs">查看活动 →</a></div>');
+          }
+          if (h.incomplete && h.incomplete.length > 0) {
+            lines.push('<div>配置不完整：' + ST.esc(h.incomplete.map(function(n) { return ST.channelLabel(n); }).join('、')) +
+              ' <a class="ov-health-link" href="/admin/channels">去修复 →</a></div>');
+          }
+          if (h.enabled && h.enabled.length === 0) {
+            lines.push('<div>尚未启用任何通知渠道 <a class="ov-health-link" href="/admin/channels">去配置 →</a></div>');
+          }
+        }
+        var html = '<div class="ov-health-head">' +
+          '<span class="st-health-dot st-health-dot--lg is-' + ST.esc(h.tone) + '"></span>' +
+          '<span class="ov-health-title">' + ST.esc(title) + '</span></div>' +
+          '<div class="ov-health-lines">' + lines.join('') + '</div>';
+        setHTML(body, html, fade);
+      }
+
+      /* ---------- 支出构成 ---------- */
+      function renderExpense(fade) {
+        var body = $('ov-expense-body');
+        if (!body || !state.stats) return;
+        var isType = state.expenseSeg === 'type';
+        var list = (isType ? state.stats.expenseByType : state.stats.expenseByCategory) || [];
+        list = list.slice(0, 5);
+        if (list.length === 0) {
+          setHTML(body, '<div class="ov-calm"><i class="fas fa-chart-bar"></i>暂无支出数据（本年）</div>', fade);
+        } else {
+          var html = list.map(function(item) {
+            var name = isType ? item.type : item.category;
+            var pct = Math.max(0, Math.min(100, Number(item.percentage) || 0));
+            return '<div class="ov-bar-row"><div class="ov-bar-head">' +
+              '<span class="ov-bar-name">' + ST.esc(name || '未分类') + '</span>' +
+              '<span class="ov-bar-vals">' + ST.fmtMoney(item.amount, 'CNY') + '<span class="ov-bar-pct">' + pct + '%</span></span></div>' +
+              '<div class="ov-bar-track"><div class="ov-bar-fill" style="width: ' + pct + '%;"></div></div></div>';
+          }).join('');
+          setHTML(body, html, fade);
+        }
+        var foot = $('ov-expense-foot');
+        if (foot && state.stats.monthlyExpense && state.stats.yearlyExpense) {
+          foot.innerHTML = '按本年支付记录折合 CNY 统计 · 本月已支出 ' +
+            ST.fmtMoney(state.stats.monthlyExpense.amount, 'CNY') +
+            ' · 本年月均支出 ' + ST.fmtMoney(state.stats.yearlyExpense.monthlyAverage, 'CNY');
+        }
+      }
+
+      /* ---------- 加载器（区块独立加载/错误/重试） ---------- */
+      function loadSubs(silent) {
+        return apiJson('/api/subscriptions').then(function(data) {
+          state.subs = Array.isArray(data) ? data : [];
+          state.zero = state.subs.length === 0;
+          $('ov-empty').hidden = !state.zero;
+          $('ov-blocks').hidden = state.zero;
+          if (!state.zero) {
+            renderAttention(silent);
+            renderBand(silent);
+            renderTimeline(silent);
+            computeNextReminder();
+          }
+        }).catch(function(err) {
+          if (silent) return; // 静默刷新失败：保留已显示数据
+          state.subs = null;
+          setHTML($('ov-band-block'), blockErrorHTML(err.message, 'subs'), false);
+          setHTML($('ov-timeline-body'), blockErrorHTML(err.message, 'subs'), false);
+          var box = $('ov-attention');
+          if (box) { box.hidden = false; setHTML(box, '<div class="st-alert st-alert--error"><i class="fas fa-exclamation-circle"></i><div class="ov-attn-text">待处理事项加载失败：' + ST.esc(err.message) + '</div><button type="button" class="st-btn st-btn--sm ov-attn-act" data-retry="subs">重试</button></div>', false); }
+        });
+      }
+
+      function loadStats(silent) {
+        return apiJson('/api/dashboard/stats').then(function(j) {
+          if (!j || !j.success || !j.data) throw new Error((j && j.message) || '统计数据不可用');
+          state.stats = j.data;
+          renderRecent(silent);
+          renderExpense(silent);
+        }).catch(function(err) {
+          if (silent) return;
+          state.stats = null;
+          setHTML($('ov-expense-body'), blockErrorHTML(err.message, 'stats'), false);
+          setHTML($('ov-recent-body'),
+            '<div class="st-alert st-alert--error"><i class="fas fa-exclamation-circle"></i><div class="ov-attn-text">最近支付加载失败：' + ST.esc(err.message) + '</div>' +
+            '<button type="button" class="st-btn st-btn--sm ov-attn-act" data-retry="stats">重试</button></div>', false);
+        });
+      }
+
+      function loadHealth(silent) {
+        var since = new Date(Date.now() - 7 * 86400000).toISOString();
+        return Promise.all([
+          ST.health(),
+          apiJson('/api/scheduler-logs?limit=3').then(function(j) { return (j && j.logs) || []; }).catch(function() { return null; }),
+          apiJson('/api/notification-logs?since=' + encodeURIComponent(since) + '&limit=200').then(function(j) { return (j && j.logs) || []; }).catch(function() { return null; })
+        ]).then(function(res) {
+          state.health = res[0];
+          renderHealth(res[0], res[1], res[2], silent);
+          renderAttention(silent);
+        }).catch(function(err) {
+          if (silent) return;
+          setHTML($('ov-health-body'), blockErrorHTML(err.message, 'health'), false);
+        });
+      }
+
+      function loadAll(silent) {
+        return Promise.all([loadSubs(silent), loadStats(silent), loadHealth(silent)]);
+      }
+
+      /* ---------- 交互：分段切换 + 区块重试（事件委托） ---------- */
+      document.addEventListener('click', function(e) {
+        var t = e.target;
+        if (!t || typeof t.closest !== 'function') return;
+        var retry = t.closest('[data-retry]');
+        if (retry) {
+          var key = retry.getAttribute('data-retry');
+          if (key === 'subs') loadSubs(false);
+          else if (key === 'stats') loadStats(false);
+          else if (key === 'health') loadHealth(false);
+          return;
+        }
+        var seg = t.closest('[data-seg-group]');
+        if (seg) {
+          var group = seg.getAttribute('data-seg-group');
+          var value = seg.getAttribute('data-seg-value');
+          var btns = document.querySelectorAll('[data-seg-group="' + group + '"]');
+          btns.forEach(function(b) { b.classList.toggle('is-active', b === seg); });
+          if (group === 'timeline') {
+            state.timelineSeg = value;
+            $('ov-timeline-body').hidden = value !== 'upcoming';
+            $('ov-recent-body').hidden = value !== 'recent';
+            if (value === 'recent') renderRecent(false);
+          } else if (group === 'expense') {
+            state.expenseSeg = value;
+            renderExpense(false);
+          }
         }
       });
 
-      document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && !mobileMenu.classList.contains('hidden')) {
-          mobileMenu.classList.add('hidden');
-          syncMobileMenuState();
+      /* ---------- 初始化：时区门禁后才渲染 ---------- */
+      ST.configReady.then(function() {
+        var todayEl = $('ov-today');
+        if (todayEl) {
+          todayEl.textContent = '今天 ' + ST.fmtDateInTz(new Date().toISOString()) + ' · 时区 ' + ST.tz();
         }
-      });
+        loadAll(false);
 
-      syncMobileMenuState();
-    }
+        /* 自动刷新：页面可见时每 60 秒静默刷新（不刷骨架、失败保留旧数据） */
+        var timer = setInterval(function() { loadAll(true); }, 60000);
+        document.addEventListener('visibilitychange', function() {
+          if (document.hidden) {
+            clearInterval(timer);
+            timer = null;
+          } else {
+            loadAll(true);
+            if (!timer) timer = setInterval(function() { loadAll(true); }, 60000);
+          }
+        });
+      }).catch(function() {
+        /* config 加载失败：ST 已显示 #st-config-error 横幅并提供重试；
+           页面保持门禁状态，禁止按 UTC 渲染（A5）。 */
+      });
+    })();
   </script>
 </body>
 </html>

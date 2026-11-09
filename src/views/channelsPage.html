@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>通知渠道 - SubsTracker</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+  ${themeResources}
+  <style>
+    .page-wrap { max-width: 1080px; margin: 0 auto; padding: var(--sp-5) var(--sp-4) var(--sp-6); }
+    .page-title { font-size: var(--fs-2xl); font-weight: 800; letter-spacing: -0.01em; color: var(--text-main); }
+    .page-sub { font-size: var(--fs-sm); color: var(--text-muted); margin-top: var(--sp-1); }
+    .policy-card {
+      background: var(--surface); border: 1px solid var(--hairline);
+      border-radius: var(--radius-l); box-shadow: var(--sh-card);
+      padding: var(--sp-4); margin: var(--sp-4) 0 var(--sp-5);
+    }
+    .policy-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); }
+    .policy-label { font-size: var(--fs-base); font-weight: 700; color: var(--text-main); }
+    .policy-sep { border-top: 1px solid var(--hairline); margin: var(--sp-3) 0; }
+    .tz-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: var(--fs-xs); color: var(--text-muted);
+      border: 1px solid var(--hairline); border-radius: 999px; padding: 3px 10px;
+    }
+    .tz-chip a { color: var(--accent); text-decoration: none; font-weight: 600; }
+    .health-line { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-main); }
+    .health-detail { font-size: var(--fs-xs); color: var(--text-muted); }
+    .hours-invalid { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
+    .hours-invalid .st-hour { cursor: default; }
+    .missing-line { font-size: var(--fs-xs); color: var(--tone-warn-text); line-height: 1.5; }
+    .last-dot { display: inline-block; width: 8px; height: 8px; border-radius: 999px; margin-right: 6px; vertical-align: 1px; }
+    .last-dot.is-ok { background: var(--dot-ok); }
+    .last-dot.is-danger { background: var(--dot-danger); }
+    .secret-row { display: flex; gap: var(--sp-2); align-items: center; }
+    .secret-row .st-input { flex: 1; min-width: 0; }
+    .field-label-row { display: flex; align-items: center; gap: var(--sp-2); }
+    .ch-test-zone { border-top: 1px solid var(--hairline); margin-top: var(--sp-2); padding-top: var(--sp-4); }
+    .test-result { margin-top: var(--sp-2); font-size: var(--fs-sm); line-height: 1.55; display: none; }
+    .test-result.is-ok { color: var(--tone-ok-text); }
+    .test-result.is-error { color: var(--tone-danger-text); }
+    .card-clickable { cursor: pointer; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div id="st-shell" data-active="channels"></div>
+  <main class="st-main">
+    <div class="st-gate-skel">
+      <div class="page-wrap">
+        <div class="st-skel st-skel--strip"></div>
+        <div class="st-skel st-skel--card" style="margin-top:16px"></div>
+        <div class="st-skel st-skel--card" style="margin-top:16px"></div>
+      </div>
+    </div>
+
+    <div class="st-tz-content">
+      <div class="page-wrap">
+        <h1 class="page-title">通知渠道</h1>
+        <p class="page-sub">提醒能不能发出去、每个渠道配没配好，都在这里。启停、配置、测试在同一张卡内闭环。</p>
+
+        <!-- 策略条：发送时段（全站唯一编辑位）+ 已启用计数 + 健康摘要 -->
+        <section class="policy-card" aria-label="发送策略">
+          <div class="policy-row">
+            <span class="policy-label"><i class="fas fa-clock" style="margin-right:6px"></i>发送时段</span>
+            <span class="tz-chip"><i class="fas fa-globe-asia"></i><span id="policyTz">时区加载中…</span><a href="/admin/config">去设置修改</a></span>
+            <span class="st-caption" id="hoursNow"></span>
+          </div>
+          <div class="st-hours" id="hoursPicker" style="margin-top:12px"></div>
+          <div class="hours-invalid" id="hoursInvalid" style="display:none"></div>
+          <p class="st-caption" id="hoursSummary" style="margin-top:8px"></p>
+          <div class="st-alert st-alert--error" id="hoursError" style="display:none"></div>
+          <div class="policy-sep"></div>
+          <div class="policy-row">
+            <span class="health-line"><span class="st-health-dot is-unknown" id="policyDot"></span><strong id="policyHealthLabel">健康检查中…</strong></span>
+            <span class="health-detail" id="policyHealthDetail"></span>
+            <span style="flex:1"></span>
+            <span class="st-caption" id="enabledCount"></span>
+          </div>
+          <p class="st-caption" style="margin-top:8px">发送失败的提醒会在下一次整点检查时自动重试（系统内置行为，无需设置）。</p>
+        </section>
+
+        <section class="st-channel-grid" id="channelGrid" aria-label="渠道列表"></section>
+      </div>
+    </div>
+  </main>
+
+  <!-- per-渠道抽屉（全页共用一个，按渠道动态填充） -->
+  <div class="st-drawer-overlay" id="chDrawerOverlay"></div>
+  <aside class="st-drawer" id="chDrawer" role="dialog" aria-modal="true" aria-labelledby="chDrawerTitle" aria-hidden="true">
+    <div class="st-drawer-head">
+      <span class="st-channel-icon" id="chDrawerIcon"><i class="fas fa-paper-plane"></i></span>
+      <span class="st-drawer-title" id="chDrawerTitle">渠道配置</span>
+      <span class="st-dirty-dot" id="chDrawerDirty" style="display:none" title="有未保存的更改"></span>
+      <label class="st-switch" title="启用 / 停用该渠道">
+        <input type="checkbox" id="chDrawerSwitch">
+        <span class="st-switch-track"></span><span class="st-switch-thumb"></span>
+      </label>
+      <button type="button" class="st-icon-btn" id="chDrawerClose" aria-label="关闭"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="st-drawer-body">
+      <div class="st-alert st-alert--info" id="chDrawerOffBanner" style="display:none">该渠道尚未启用：配置会照常保存，但不会发送通知。打开右上角开关后生效。</div>
+      <div class="st-alert st-alert--warn" id="chDrawerWarn" style="display:none"></div>
+      <div class="st-alert st-alert--error" id="chDrawerError" style="display:none"></div>
+      <div id="chDrawerFields" style="margin-top:4px"></div>
+      <div class="ch-test-zone">
+        <p class="st-caption">使用当前填写值测试，将发出一条真实消息（无需先保存）。测试结果会记入活动页。</p>
+        <p class="test-result" id="chTestResult"></p>
+      </div>
+    </div>
+    <div class="st-drawer-foot">
+      <button type="button" class="st-btn st-btn--ghost" id="chTestBtn"><i class="fas fa-paper-plane" style="margin-right:6px"></i>发送测试</button>
+      <span style="flex:1"></span>
+      <button type="button" class="st-btn st-btn--ghost" id="chSaveTestBtn">保存并测试</button>
+      <button type="button" class="st-btn st-btn--primary" id="chSaveBtn">保存</button>
+    </div>
+  </aside>
+
+  <script>
+    'use strict';
+
+    /* ---------- 基础请求 ---------- */
+    async function apiFetch(url, options) {
+      const res = await fetch(url, options || {});
+      if (res.status === 401) { window.location.href = '/'; throw new Error('AUTH_EXPIRED'); }
+      return res;
+    }
+    async function fetchConfig() {
+      const res = await apiFetch('/api/config');
+      if (!res.ok) throw new Error('配置加载失败（HTTP ' + res.status + '）');
+      return res.json();
+    }
+    /* 一域一存：先拉最新配置作基线，合并本域 patch 后整表提交，
+       避免覆盖其他页面刚保存的值（后端 POST /api/config 按字段重建，必须整表带齐）。 */
+    async function saveConfigPatch(patch, clearSecrets) {
+      const base = await fetchConfig();
+      const body = {};
+      Object.keys(base).forEach(function(k) { if (!/_CONFIGURED$/.test(k)) body[k] = base[k]; });
+      Object.keys(patch || {}).forEach(function(k) { body[k] = patch[k]; });
+      if (clearSecrets && clearSecrets.length) body.CLEAR_SECRET_FIELDS = clearSecrets;
+      const res = await apiFetch('/api/config', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      });
+      const j = await res.json().catch(function() { return {}; });
+      if (!res.ok || !j.success) throw new Error(j.message || ('保存失败（HTTP ' + res.status + '）'));
+      await ST.loadConfig(true).catch(function() {});
+      return j;
+    }
+
+    /* ---------- 未保存拦截（A28：切导航 / 切 Tab / 浏览器返回） ---------- */
+    var guardBypass = false;
+    var drawerDirtyFn = function() { return false; };
+    function anyDirty() { return drawerDirtyFn(); }
+    window.addEventListener('beforeunload', function(e) {
+      if (!guardBypass && anyDirty()) { e.preventDefault(); e.returnValue = ''; }
+    });
+    document.addEventListener('click', function(e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+      if (!a) return;
+      var href = a.getAttribute('href') || '';
+      if (href.charAt(0) !== '/' || href.indexOf('//') === 0) return;
+      if (!anyDirty()) return;
+      e.preventDefault();
+      ST.confirmDanger({ title: '有未保存的更改', body: '渠道配置尚未保存，离开将丢失这些修改。', confirmText: '放弃并离开' })
+        .then(function(ok) { if (ok) { guardBypass = true; window.location.href = href; } });
+    }, true);
+
+    /* ---------- 渠道字段定义（与旧配置页逐项对齐，一个不少） ---------- */
+    var FIELD_DEFS = {
+      email: [
+        { key: 'RESEND_API_KEY', label: 'Resend API Key', secret: true, hint: '从 Resend 控制台获取的 API Key。', help: { href: 'https://resend.com/api-keys', text: '去 Resend 获取 Key →' } },
+        { key: 'EMAIL_FROM', label: '发件人邮箱', type: 'email', placeholder: 'noreply@yourdomain.com', hint: '必须是已在 Resend 验证的域名邮箱。' },
+        { key: 'EMAIL_FROM_NAME', label: '发件人名称', placeholder: '订阅提醒系统', hint: '显示在邮件中的发件人名称。' },
+        { key: 'EMAIL_TO', label: '收件人邮箱', type: 'email', placeholder: 'user@example.com', hint: '接收通知邮件的邮箱地址。' }
+      ],
+      telegram: [
+        { key: 'TG_BOT_TOKEN', label: 'Bot Token', secret: true },
+        { key: 'TG_CHAT_ID', label: 'Chat ID', placeholder: '可从 @userinfobot 获取' },
+        { key: 'TG_TOPIC_ID', label: 'Topic ID（可选）', placeholder: 'Forum 群组话题 ID', hint: '对应 message_thread_id；仅在开启 Topics 的群组中填写，留空则发送到普通会话/群组。' }
+      ],
+      wechatbot: [
+        { key: 'WECHATBOT_WEBHOOK', label: '机器人 Webhook URL', secret: true, hint: '从企业微信群聊中添加机器人获取的 Webhook URL。', help: { href: 'https://developer.work.weixin.qq.com/document/path/91770', text: '企业微信机器人文档 →' } },
+        { key: 'WECHATBOT_MSG_TYPE', label: '消息类型', type: 'select', options: [['text', '文本消息'], ['markdown', 'Markdown消息']] },
+        { key: 'WECHATBOT_AT_MOBILES', label: '@手机号（可选）', placeholder: '13800138000,13900139000', hint: '需要 @ 的手机号，多个用逗号分隔，留空则不 @ 任何人。' },
+        { key: 'WECHATBOT_AT_ALL', label: '@所有人', type: 'switch', switchLabel: '发送消息时 @ 所有人' }
+      ],
+      bark: [
+        { key: 'BARK_SERVER', label: '服务器地址', type: 'url', placeholder: 'https://api.day.app', hint: '默认为官方服务器，也可以使用自建服务器。' },
+        { key: 'BARK_DEVICE_KEY', label: '设备 Key', secret: true, hint: '从 Bark iOS 应用中获取的设备 Key。', help: { href: 'https://apps.apple.com/cn/app/bark-customed-notifications/id1403753865', text: 'Bark iOS 应用 →' } },
+        { key: 'BARK_IS_ARCHIVE', label: '保存推送', type: 'switch', switchLabel: '保存推送到历史记录' }
+      ],
+      notifyx: [
+        { key: 'NOTIFYX_API_KEY', label: 'API Key', secret: true, hint: '从 NotifyX 平台获取的 API Key。', help: { href: 'https://www.notifyx.cn/', text: '去 NotifyX 获取 Key →' } }
+      ],
+      serverchan: [
+        { key: 'SERVERCHAN_SENDKEY', label: 'SendKey', secret: true, hint: '从 Server 酱获取 SendKey。', help: { href: 'https://sct.ftqq.com/', text: '去 Server 酱获取 SendKey →' } }
+      ],
+      pushplus: [
+        { key: 'PUSHPLUS_TOKEN', label: 'Token', secret: true },
+        { key: 'PUSHPLUS_TOPIC', label: '群组编码 Topic（可选）', placeholder: '留空则发送到个人渠道' },
+        { key: 'PUSHPLUS_CHANNEL', label: '渠道（可选）', type: 'select', options: [['', '默认'], ['wechat', '微信公众号'], ['mail', '邮件'], ['sms', '短信'], ['webhook', 'Webhook']], hint: '具体可用渠道以 PushPlus 平台支持情况为准。' }
+      ],
+      ntfy: [
+        { key: 'NTFY_SERVER', label: 'Server URL', type: 'url', placeholder: 'https://ntfy.sh', hint: '公共服务器可用 https://ntfy.sh，也可填自建地址。' },
+        { key: 'NTFY_TOPIC', label: 'Topic（主题）', placeholder: '例如 my-substracker-alerts' },
+        { key: 'NTFY_TOKEN', label: 'Access Token（可选）', secret: true, placeholder: '受保护主题时填写' }
+      ],
+      gotify: [
+        { key: 'GOTIFY_SERVER_URL', label: 'Server URL', type: 'url', placeholder: 'https://gotify.example.com', hint: '你的 Gotify 服务地址（不需要带 /message）。' },
+        { key: 'GOTIFY_APP_TOKEN', label: 'Application Token', secret: true }
+      ],
+      wpush: [
+        { key: 'WPUSH_APIKEY', label: 'API Key', secret: true, hint: '从 WPUSH 设置页获取 API Key。', help: { href: 'https://wpush.cn/settings', text: '去 WPUSH 获取 Key →' } },
+        { key: 'WPUSH_CHANNEL', label: '渠道（可选）', type: 'select', options: [['', '默认'], ['wechat', '微信公众号'], ['app', 'App'], ['sms', '短信'], ['mail', '邮件'], ['webhook', 'Webhook'], ['dingtalk', '钉钉'], ['feishu', '飞书'], ['wechat_work', '企业微信'], ['clawbot', '微信 ClawBot'], ['qqbot', 'QQ 机器人']], hint: '具体可用渠道以 WPUSH 文档为准。' },
+        { key: 'WPUSH_TOPIC_CODE', label: 'Topic 编码（可选）', placeholder: '留空则按个人渠道推送' }
+      ],
+      webhook: [
+        { key: 'WEBHOOK_URL', label: 'Webhook URL', secret: true, hint: '自建服务或第三方平台提供的 Webhook 地址，例如 https://your-webhook-endpoint.com/path。', help: { href: 'https://webhook.site', text: 'Webhook 调试工具 →' } },
+        { key: 'WEBHOOK_METHOD', label: '请求方法', type: 'select', options: [['POST', 'POST'], ['GET', 'GET'], ['PUT', 'PUT']] },
+        { key: 'WEBHOOK_HEADERS', label: '自定义请求头（JSON 格式，可选）', secret: true, textarea: true, rows: 3, hint: 'JSON 格式的自定义请求头，留空使用默认。' },
+        { key: 'WEBHOOK_TEMPLATE', label: '消息模板（JSON 格式，可选）', textarea: true, rows: 4, placeholder: '{"title": "{{title}}", "content": "{{content}}", "timestamp": "{{timestamp}}"}', hint: '支持变量 {{title}}、{{content}}、{{timestamp}}。留空使用默认格式。' }
+      ]
+    };
+    var KEY_LABEL = {};
+    Object.keys(FIELD_DEFS).forEach(function(ch) {
+      FIELD_DEFS[ch].forEach(function(f) { KEY_LABEL[f.key] = f.label; });
+    });
+    function keyLabel(k) { return KEY_LABEL[k] || k; }
+
+    /* ---------- 最近结果 ---------- */
+    function relTime(iso) {
+      var t = new Date(iso).getTime();
+      if (isNaN(t)) return '';
+      var s = Math.max(0, (Date.now() - t) / 1000);
+      if (s < 60) return '刚刚';
+      if (s < 3600) return Math.floor(s / 60) + ' 分钟前';
+      if (s < 86400) return Math.floor(s / 3600) + ' 小时前';
+      return Math.floor(s / 86400) + ' 天前';
+    }
+    function sourceLabel(ruleId) {
+      if (ruleId === 'test') return '测试';
+      if (ruleId === 'manual-test' || ruleId === 'manual') return '手动测试';
+      if (ruleId === 'thirdparty') return '第三方';
+      return '发送';
+    }
+    var lastByChannel = {};
+    async function fetchLast(channel) {
+      try {
+        const res = await apiFetch('/api/notification-logs?channel=' + encodeURIComponent(channel) + '&limit=1');
+        const j = await res.json();
+        const logs = (j && j.logs) || [];
+        lastByChannel[channel] = logs.length ? logs[0] : null;
+      } catch (e) { lastByChannel[channel] = null; }
+      renderLastLine(channel);
+    }
+    function renderLastLine(channel) {
+      var el = document.querySelector('[data-last="' + channel + '"]');
+      if (!el) return;
+      if (!Object.prototype.hasOwnProperty.call(lastByChannel, channel)) {
+        el.textContent = '最近结果：加载中…';
+        return;
+      }
+      var entry = lastByChannel[channel];
+      var href = '/admin/notify-logs?channel=' + encodeURIComponent(channel);
+      if (!entry) {
+        el.innerHTML = '最近结果：暂无记录';
+        return;
+      }
+      var ok = entry.status === 'success';
+      var html = '<a href="' + href + '"><span class="last-dot ' + (ok ? 'is-ok' : 'is-danger') + '"></span>' +
+        (ok ? '最近成功' : '最近失败') + ' · ' + ST.esc(sourceLabel(entry.ruleId)) + ' · ' + ST.esc(relTime(entry.timestamp));
+      if (!ok && entry.error) html += ' · ' + ST.esc(String(entry.error).slice(0, 60));
+      html += '</a>';
+      el.innerHTML = html;
+    }
+
+    /* ---------- 渠道卡 ---------- */
+    var STATE_BADGE = {
+      working: ['ok', '工作中'],
+      incomplete: ['warn', '配置不完整'],
+      off: ['neutral', '已配置未启用'],
+      unconfigured: ['muted', '未配置']
+    };
+    function renderCards() {
+      var cfg = ST.config || {};
+      var grid = document.getElementById('channelGrid');
+      var rank = { working: 0, incomplete: 0, off: 1, unconfigured: 2 };
+      var items = ST.CHANNELS.map(function(def, idx) {
+        return { def: def, idx: idx, st: ST.channelState(def.name, cfg) };
+      });
+      items.sort(function(a, b) {
+        var r = rank[a.st.state] - rank[b.st.state];
+        return r !== 0 ? r : a.idx - b.idx;
+      });
+      grid.innerHTML = items.map(function(it) {
+        var def = it.def, st = it.st;
+        var badge = STATE_BADGE[st.state] || STATE_BADGE.unconfigured;
+        var html = '<article class="st-channel-card" data-card="' + def.name + '">';
+        html += '<div class="st-channel-head card-clickable" data-open="' + def.name + '">' +
+          '<span class="st-channel-icon"><i class="fas ' + def.icon + '"></i></span>' +
+          '<span class="st-channel-name">' + ST.esc(def.label) + '</span>' +
+          ST.badge(badge[0], badge[1]) +
+          '<label class="st-switch" style="margin-left:auto" title="启用 / 停用">' +
+            '<input type="checkbox" data-switch="' + def.name + '"' + (st.enabled ? ' checked' : '') + '>' +
+            '<span class="st-switch-track"></span><span class="st-switch-thumb"></span>' +
+          '</label></div>';
+        if (st.state === 'incomplete') {
+          html += '<p class="missing-line">缺少：' + st.missing.map(function(k) { return ST.esc(keyLabel(k)); }).join('、') + '</p>';
+        }
+        html += '<div class="st-channel-last" data-last="' + def.name + '">最近结果：加载中…</div>';
+        html += '<div class="st-channel-foot">' +
+          '<button type="button" class="st-btn st-btn--primary st-btn--sm" data-open="' + def.name + '">配置</button>' +
+          '<button type="button" class="st-btn st-btn--ghost st-btn--sm" data-test="' + def.name + '">测试</button>' +
+          '</div>';
+        html += '<p class="st-caption">测试使用已保存的配置，将发出一条真实消息。</p>';
+        html += '</article>';
+        return html;
+      }).join('');
+
+      grid.querySelectorAll('[data-open]').forEach(function(el) {
+        el.addEventListener('click', function() { openDrawer(el.getAttribute('data-open')); });
+      });
+      grid.querySelectorAll('[data-switch]').forEach(function(input) {
+        input.addEventListener('change', function() { toggleChannel(input); });
+      });
+      grid.querySelectorAll('[data-test]').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+          var name = btn.getAttribute('data-test');
+          var r = await testChannel(name, btn, null);
+          if (r.ok) ST.toast(ST.channelLabel(name) + ' 测试发送成功');
+          else ST.toast(ST.channelLabel(name) + ' 测试失败：' + r.message, { tone: 'error' });
+          fetchLast(name);
+        });
+      });
+      ST.CHANNELS.forEach(function(def) { renderLastLine(def.name); });
+      var enabled = (cfg.ENABLED_NOTIFIERS || []).length;
+      document.getElementById('enabledCount').textContent = '已启用 ' + enabled + ' / ' + ST.CHANNELS.length + ' 个渠道';
+    }
+
+    async function toggleChannel(input) {
+      var name = input.getAttribute('data-switch');
+      var want = input.checked;
+      var cfg = ST.config || {};
+      var list = Array.isArray(cfg.ENABLED_NOTIFIERS) ? cfg.ENABLED_NOTIFIERS.slice() : [];
+      var has = list.indexOf(name) >= 0;
+      if (want && !has) list.push(name);
+      if (!want && has) list = list.filter(function(x) { return x !== name; });
+      input.disabled = true;
+      try {
+        await saveConfigPatch({ ENABLED_NOTIFIERS: list });
+        ST.toast((want ? '已启用 ' : '已停用 ') + ST.channelLabel(name));
+        renderCards();
+        refreshHealth();
+      } catch (e) {
+        input.checked = !want;
+        ST.toast('开关保存失败：' + e.message, { tone: 'error' });
+      } finally {
+        input.disabled = false;
+      }
+    }
+
+    /* ---------- 测试发送（卡面 = 已保存配置；抽屉 = 当前填写值） ---------- */
+    async function testChannel(name, btn, payload) {
+      var original = btn ? btn.innerHTML : '';
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 测试中…'; }
+      try {
+        const res = await apiFetch('/api/test-notification', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(Object.assign({ type: name }, payload || {}))
+        });
+        const j = await res.json().catch(function() { return { success: false, message: '服务返回了无法解析的响应' }; });
+        var ok = res.ok && j.success;
+        var msg = j.message || (ok ? '发送成功' : ('HTTP ' + res.status));
+        return { ok: ok, message: msg };
+      } catch (e) {
+        if (e && e.message === 'AUTH_EXPIRED') return { ok: false, message: '登录已过期' };
+        return { ok: false, message: '网络错误，请稍后重试' };
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = original; }
+      }
+    }
+
+    /* ---------- 发送时段 HourPicker ---------- */
+    var hoursInvalidTokens = [];
+    function parseHours(tokens) {
+      var set = {}, all = false, invalid = [];
+      (tokens || []).forEach(function(tok) {
+        var t = String(tok).trim();
+        if (!t) return;
+        if (t === '*' || t.toUpperCase() === 'ALL') { all = true; return; }
+        if (/^\d+$/.test(t)) {
+          var n = parseInt(t, 10);
+          if (n >= 0 && n <= 23) { set[n] = true; return; }
+        }
+        invalid.push(t);
+      });
+      /* 后端口径：无任何有效 token（空数组/全空白）即不限制时段，与 scheduler 的 length===0 判定一致 */
+      if (!all && invalid.length === 0 && Object.keys(set).length === 0) all = true;
+      return { set: set, all: all, invalid: invalid };
+    }
+    function currentHourState() {
+      var cfg = ST.config || {};
+      return parseHours(cfg.NOTIFICATION_HOURS);
+    }
+    function renderHours() {
+      var picker = document.getElementById('hoursPicker');
+      var st = currentHourState();
+      hoursInvalidTokens = st.invalid;
+      var html = '';
+      for (var h = 0; h < 24; h++) {
+        var on = st.all || st.set[h];
+        html += '<button type="button" class="st-hour' + (on ? ' is-on' : '') + '" data-hour="' + h + '">' + String(h).padStart(2, '0') + '</button>';
+      }
+      picker.innerHTML = html;
+      picker.querySelectorAll('[data-hour]').forEach(function(btn) {
+        btn.addEventListener('click', function() { onHourClick(parseInt(btn.getAttribute('data-hour'), 10)); });
+      });
+      var inv = document.getElementById('hoursInvalid');
+      if (st.invalid.length) {
+        inv.style.display = 'flex';
+        inv.innerHTML = '<span class="st-caption">存量配置含非法时段值（不会生效）：</span>' +
+          st.invalid.map(function(t) { return '<span class="st-hour is-invalid">' + ST.esc(t) + '</span>'; }).join('') +
+          '<button type="button" class="st-btn st-btn--ghost st-btn--sm" id="hoursClearInvalid">清除</button>';
+        document.getElementById('hoursClearInvalid').addEventListener('click', clearInvalidHours);
+      } else {
+        inv.style.display = 'none';
+        inv.innerHTML = '';
+      }
+      updateHoursSummary();
+    }
+    function updateHoursSummary() {
+      var st = currentHourState();
+      var summary = document.getElementById('hoursSummary');
+      var nowEl = document.getElementById('hoursNow');
+      var tz = ST.tz();
+      var parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour12: false, hour: '2-digit', minute: '2-digit' }).formatToParts(new Date());
+      var hh = '00', mm = '00';
+      parts.forEach(function(p) { if (p.type === 'hour') hh = p.value; if (p.type === 'minute') mm = p.value; });
+      if (hh === '24') hh = '00';
+      var cur = parseInt(hh, 10);
+      var inWindow = st.all || !!st.set[cur];
+      if (st.all) {
+        summary.textContent = '未限制时段：每个整点检查时都可以发送。点选具体小时可改为仅在所选时段发送。';
+      } else {
+        var list = Object.keys(st.set).map(Number).sort(function(a, b) { return a - b; })
+          .map(function(h) { return String(h).padStart(2, '0'); }).join('、');
+        summary.textContent = '仅在所选整点发送：' + list + '（' + tz + '）。其余时间调度会正常跳过、不发送。';
+      }
+      nowEl.textContent = '现在 ' + hh + ':' + mm + '（' + tz + '）· ' + (inWindow ? '在发送时段内' : '不在发送时段内，将正常跳过');
+      document.getElementById('policyTz').textContent = '时区 ' + tz;
+    }
+    async function saveHours(tokens) {
+      var errEl = document.getElementById('hoursError');
+      errEl.style.display = 'none';
+      try {
+        await saveConfigPatch({ NOTIFICATION_HOURS: tokens });
+        renderHours();
+      } catch (e) {
+        /* 本地 ST.config 可能已被点击处理预写了未落库的值，强制重拉真值再重渲 */
+        await ST.loadConfig(true).catch(function() {});
+        errEl.textContent = '发送时段保存失败：' + e.message + '（已恢复为已保存的值）';
+        errEl.style.display = 'block';
+        renderHours();
+      }
+    }
+    function tokensFromState(st) {
+      if (st.all) return [];
+      return Object.keys(st.set).map(Number).sort(function(a, b) { return a - b; })
+        .map(function(h) { return String(h).padStart(2, '0'); })
+        .concat(hoursInvalidTokens);
+    }
+    function onHourClick(h) {
+      var st = currentHourState();
+      if (st.all) {
+        st.all = false;
+        st.set = {};
+        for (var i = 0; i < 24; i++) if (i !== h) st.set[i] = true;
+      } else if (st.set[h]) {
+        delete st.set[h];
+        if (Object.keys(st.set).length === 0) st.all = true; /* 空集在后端语义即不限制 */
+      } else {
+        st.set[h] = true;
+        if (Object.keys(st.set).length === 24) st.all = true;
+      }
+      /* 先本地呈现，再落库；失败由 saveHours 回滚重渲 */
+      var cfg = ST.config || (ST.config = {});
+      cfg.NOTIFICATION_HOURS = tokensFromState(st);
+      renderHours();
+      saveHours(tokensFromState(st));
+    }
+    function clearInvalidHours() {
+      var st = currentHourState();
+      hoursInvalidTokens = [];
+      var cfg = ST.config || (ST.config = {});
+      cfg.NOTIFICATION_HOURS = st.all ? [] : Object.keys(st.set).map(Number)
+        .sort(function(a, b) { return a - b; })
+        .map(function(h) { return String(h).padStart(2, '0'); });
+      renderHours();
+      saveHours(cfg.NOTIFICATION_HOURS.slice());
+    }
+
+    /* ---------- 健康摘要（与侧边栏 HealthDot 同源 ST.health()） ---------- */
+    function refreshHealth() {
+      ST.health().then(function(h) {
+        var dot = document.getElementById('policyDot');
+        dot.className = 'st-health-dot ' + (h.tone === 'unknown' ? 'is-unknown' : ('is-' + h.tone));
+        document.getElementById('policyHealthLabel').textContent = h.label;
+        document.getElementById('policyHealthDetail').textContent = h.detail || '';
+      }).catch(function() {});
+    }
+
+    /* ---------- per-渠道抽屉 ---------- */
+    var drawer = {
+      name: null, clearSecrets: new Set(), snapshot: '', lastFocus: null, saving: false
+    };
+    var drawerEls = {};
+    function fieldInputEl(key) { return document.querySelector('[data-field="' + key + '"]'); }
+
+    function buildDrawerFields(name) {
+      var cfg = ST.config || {};
+      var wrap = document.getElementById('chDrawerFields');
+      wrap.innerHTML = FIELD_DEFS[name].map(function(f) {
+        var html = '<div class="st-field" data-fieldwrap="' + f.key + '">';
+        if (f.type === 'switch') {
+          html += '<span class="st-field-label">' + ST.esc(f.label) + '</span>' +
+            '<label class="st-switch"><input type="checkbox" data-field="' + f.key + '"' + (cfg[f.key] === 'true' ? ' checked' : '') + '>' +
+            '<span class="st-switch-track"></span><span class="st-switch-thumb"></span></label>' +
+            (f.switchLabel ? '<span class="st-caption">' + ST.esc(f.switchLabel) + '</span>' : '');
+        } else {
+          html += '<div class="field-label-row"><label class="st-field-label" for="df-' + f.key + '">' + ST.esc(f.label) + '</label>' +
+            (f.secret ? '<span class="st-secret-state" data-secret-state="' + f.key + '" style="display:none"></span>' : '') + '</div>';
+          if (f.type === 'select') {
+            html += '<select class="st-input" id="df-' + f.key + '" data-field="' + f.key + '">' +
+              f.options.map(function(o) {
+                return '<option value="' + ST.esc(o[0]) + '"' + (String(cfg[f.key] || '') === o[0] ? ' selected' : '') + '>' + ST.esc(o[1]) + '</option>';
+              }).join('') + '</select>';
+          } else if (f.textarea) {
+            html += '<textarea class="st-input" id="df-' + f.key + '" data-field="' + f.key + '" rows="' + (f.rows || 3) + '"' +
+              (f.placeholder ? ' placeholder="' + ST.esc(f.placeholder) + '"' : '') + '>' +
+              (f.secret ? '' : ST.esc(cfg[f.key] || '')) + '</textarea>';
+          } else {
+            html += '<input class="st-input" id="df-' + f.key + '" data-field="' + f.key + '" type="' + (f.type || 'text') + '"' +
+              ' value="' + (f.secret ? '' : ST.esc(cfg[f.key] || '')) + '"' +
+              (f.placeholder ? ' placeholder="' + ST.esc(f.placeholder) + '"' : '') + '>';
+          }
+          if (f.secret) {
+            html += '<div class="secret-row" style="margin-top:2px"><span class="st-caption" data-secret-note="' + f.key + '"></span>' +
+              '<span style="flex:1"></span>' +
+              '<button type="button" class="st-btn st-btn--ghost st-btn--sm" data-clear="' + f.key + '">清空</button></div>';
+          }
+        }
+        if (f.hint) html += '<p class="st-field-hint">' + ST.esc(f.hint) + '</p>';
+        if (f.help) html += '<p class="st-field-hint"><a href="' + f.help.href + '" target="_blank" rel="noopener" style="color:var(--accent)">' + ST.esc(f.help.text) + '</a></p>';
+        html += '<p class="st-field-error" data-field-error="' + f.key + '"></p></div>';
+        return html;
+      }).join('');
+
+      /* 密钥三态接线 */
+      FIELD_DEFS[name].forEach(function(f) {
+        if (!f.secret) return;
+        var input = fieldInputEl(f.key);
+        refreshSecretState(f.key);
+        input.addEventListener('input', function() {
+          if (input.value.trim()) drawer.clearSecrets.delete(f.key);
+          refreshSecretState(f.key);
+          markDrawerDirty();
+        });
+        var clearBtn = document.querySelector('[data-clear="' + f.key + '"]');
+        if (clearBtn) clearBtn.addEventListener('click', function() {
+          input.value = '';
+          drawer.clearSecrets.add(f.key);
+          refreshSecretState(f.key);
+          markDrawerDirty();
+          ST.toast('已标记清空（保存后生效）', { tone: 'warn' });
+        });
+      });
+      wrap.querySelectorAll('[data-field]').forEach(function(el) {
+        el.addEventListener('input', markDrawerDirty);
+        el.addEventListener('change', markDrawerDirty);
+      });
+    }
+    function refreshSecretState(key) {
+      var badge = document.querySelector('[data-secret-state="' + key + '"]');
+      var note = document.querySelector('[data-secret-note="' + key + '"]');
+      var cfg = ST.config || {};
+      var input = fieldInputEl(key);
+      var configured = cfg[key + '_CONFIGURED'] === true;
+      if (!badge) return;
+      if (drawer.clearSecrets.has(key)) {
+        badge.style.display = ''; badge.className = 'st-secret-state is-clear'; badge.textContent = '将清空';
+        if (note) note.textContent = '';
+      } else if (input && input.value.trim()) {
+        badge.style.display = ''; badge.className = 'st-secret-state is-update'; badge.textContent = '将更新';
+        if (note) note.textContent = '';
+      } else if (configured) {
+        badge.style.display = ''; badge.className = 'st-secret-state is-saved'; badge.textContent = '已保存';
+        if (note) note.textContent = '已配置（内容已隐藏），留空表示不修改。';
+      } else {
+        badge.style.display = 'none';
+        if (note) note.textContent = '未配置。';
+      }
+    }
+    function collectDrawerValues() {
+      var name = drawer.name;
+      var values = {};
+      FIELD_DEFS[name].forEach(function(f) {
+        var el = fieldInputEl(f.key);
+        if (!el) return;
+        if (f.type === 'switch') values[f.key] = el.checked ? 'true' : 'false';
+        else values[f.key] = el.value;
+      });
+      values.__enabled = document.getElementById('chDrawerSwitch').checked;
+      return values;
+    }
+    function drawerSnapshot() {
+      var v = collectDrawerValues();
+      var clears = Array.from(drawer.clearSecrets).sort().join(',');
+      return JSON.stringify(v) + '|' + clears;
+    }
+    function markDrawerDirty() {
+      var dirty = drawer.name && drawerSnapshot() !== drawer.snapshot;
+      document.getElementById('chDrawerDirty').style.display = dirty ? '' : 'none';
+    }
+    drawerDirtyFn = function() {
+      return !!(drawer.name && drawerSnapshot() !== drawer.snapshot);
+    };
+
+    function openDrawer(name) {
+      var def = null;
+      ST.CHANNELS.forEach(function(d) { if (d.name === name) def = d; });
+      if (!def) return;
+      drawer.name = name;
+      drawer.clearSecrets = new Set();
+      drawer.lastFocus = document.activeElement;
+      var cfg = ST.config || {};
+      document.getElementById('chDrawerIcon').innerHTML = '<i class="fas ' + def.icon + '"></i>';
+      document.getElementById('chDrawerTitle').textContent = def.label + ' 配置';
+      var enabled = Array.isArray(cfg.ENABLED_NOTIFIERS) && cfg.ENABLED_NOTIFIERS.indexOf(name) >= 0;
+      document.getElementById('chDrawerSwitch').checked = enabled;
+      document.getElementById('chDrawerOffBanner').style.display = enabled ? 'none' : '';
+      document.getElementById('chDrawerError').style.display = 'none';
+      document.getElementById('chDrawerWarn').style.display = 'none';
+      var tr = document.getElementById('chTestResult');
+      tr.style.display = 'none'; tr.textContent = '';
+      buildDrawerFields(name);
+      drawer.snapshot = drawerSnapshot();
+      markDrawerDirty();
+      document.getElementById('chDrawerOverlay').classList.add('is-open');
+      var d = document.getElementById('chDrawer');
+      d.classList.add('is-open');
+      d.setAttribute('aria-hidden', 'false');
+      var first = d.querySelector('[data-field]');
+      if (first) first.focus();
+    }
+    function closeDrawer(force) {
+      if (!drawer.name) return;
+      var doClose = function() {
+        document.getElementById('chDrawerOverlay').classList.remove('is-open');
+        var d = document.getElementById('chDrawer');
+        d.classList.remove('is-open');
+        d.setAttribute('aria-hidden', 'true');
+        drawer.name = null;
+        if (drawer.lastFocus && drawer.lastFocus.focus) drawer.lastFocus.focus();
+      };
+      if (!force && drawerDirtyFn()) {
+        ST.confirmDanger({ title: '有未保存的更改', body: '该渠道的配置尚未保存，关闭将丢失这些修改。', confirmText: '放弃并关闭' })
+          .then(function(ok) { if (ok) doClose(); });
+        return;
+      }
+      doClose();
+    }
+    async function saveDrawer(thenTest) {
+      if (!drawer.name || drawer.saving) return;
+      var name = drawer.name;
+      drawer.saving = true;
+      var errEl = document.getElementById('chDrawerError');
+      var warnEl = document.getElementById('chDrawerWarn');
+      errEl.style.display = 'none'; warnEl.style.display = 'none';
+      var values = collectDrawerValues();
+      var patch = {};
+      var clearList = [];
+      FIELD_DEFS[name].forEach(function(f) {
+        if (f.secret) {
+          if (drawer.clearSecrets.has(f.key)) { clearList.push(f.key); patch[f.key] = ''; }
+          else patch[f.key] = (values[f.key] || '').trim();
+        } else if (f.type === 'switch') {
+          patch[f.key] = values[f.key];
+        } else {
+          patch[f.key] = (values[f.key] || '').trim();
+        }
+      });
+      var cfg = ST.config || {};
+      var list = Array.isArray(cfg.ENABLED_NOTIFIERS) ? cfg.ENABLED_NOTIFIERS.slice() : [];
+      var has = list.indexOf(name) >= 0;
+      if (values.__enabled && !has) list.push(name);
+      if (!values.__enabled && has) list = list.filter(function(x) { return x !== name; });
+      patch.ENABLED_NOTIFIERS = list;
+      var saveBtn = document.getElementById('chSaveBtn');
+      var saveTestBtn = document.getElementById('chSaveTestBtn');
+      saveBtn.disabled = true; saveTestBtn.disabled = true;
+      try {
+        await saveConfigPatch(patch, clearList);
+        drawer.clearSecrets = new Set();
+        buildDrawerFields(name); /* 密钥状态按新配置重渲 */
+        document.getElementById('chDrawerOffBanner').style.display = values.__enabled ? 'none' : '';
+        drawer.snapshot = drawerSnapshot();
+        markDrawerDirty();
+        renderCards();
+        refreshHealth();
+        /* 启用但缺必填：卡面会显示「配置不完整」，抽屉内同步明确提示（A10） */
+        var missing = ST.channelMissing(name, ST.config);
+        if (values.__enabled && missing.length) {
+          warnEl.textContent = '已保存并启用，但配置不完整：缺少 ' +
+            missing.map(function(k) { return keyLabel(k); }).join('、') + '，补齐前该渠道不会发送。';
+          warnEl.style.display = '';
+        } else {
+          ST.toast(ST.channelLabel(name) + ' 配置已保存');
+        }
+        if (thenTest) await runDrawerTest();
+      } catch (e) {
+        errEl.textContent = '保存失败：' + e.message + '。修改仍保留在抽屉中，可重试或关闭时放弃。';
+        errEl.style.display = '';
+      } finally {
+        drawer.saving = false;
+        saveBtn.disabled = false; saveTestBtn.disabled = false;
+      }
+    }
+    function buildTestPayload(name) {
+      var payload = {};
+      FIELD_DEFS[name].forEach(function(f) {
+        var el = fieldInputEl(f.key);
+        if (!el) return;
+        if (f.secret) {
+          var v = el.value.trim();
+          if (v && !drawer.clearSecrets.has(f.key)) payload[f.key] = v;
+        } else if (f.type === 'switch') {
+          payload[f.key] = el.checked ? 'true' : 'false';
+        } else {
+          payload[f.key] = el.value.trim();
+        }
+      });
+      if (name === 'bark' && !payload.BARK_SERVER) payload.BARK_SERVER = 'https://api.day.app';
+      if (name === 'ntfy' && !payload.NTFY_SERVER) payload.NTFY_SERVER = 'https://ntfy.sh';
+      return payload;
+    }
+    async function runDrawerTest() {
+      var name = drawer.name;
+      if (!name) return;
+      var btn = document.getElementById('chTestBtn');
+      var tr = document.getElementById('chTestResult');
+      var gotifyWrap = document.querySelector('[data-fieldwrap="GOTIFY_SERVER_URL"]');
+      if (gotifyWrap) gotifyWrap.classList.remove('is-error');
+      if (name === 'gotify' && !fieldInputEl('GOTIFY_SERVER_URL').value.trim()) {
+        var wrap = document.querySelector('[data-fieldwrap="GOTIFY_SERVER_URL"]');
+        if (wrap) wrap.classList.add('is-error');
+        var fe = document.querySelector('[data-field-error="GOTIFY_SERVER_URL"]');
+        if (fe) fe.textContent = '请先填写 Server URL 再测试。';
+        fieldInputEl('GOTIFY_SERVER_URL').focus();
+        return;
+      }
+      var r = await testChannel(name, btn, buildTestPayload(name));
+      tr.style.display = '';
+      tr.className = 'test-result ' + (r.ok ? 'is-ok' : 'is-error');
+      tr.textContent = (r.ok ? '测试成功' : '测试失败') + ' · ' + ST.fmtTimeInTz(new Date().toISOString()) +
+        '（' + ST.tz() + '）' + (r.ok ? '' : '：' + r.message);
+      fetchLast(name);
+    }
+
+    document.getElementById('chDrawerClose').addEventListener('click', function() { closeDrawer(false); });
+    document.getElementById('chDrawerOverlay').addEventListener('click', function() { closeDrawer(false); });
+    document.getElementById('chSaveBtn').addEventListener('click', function() { saveDrawer(false); });
+    document.getElementById('chSaveTestBtn').addEventListener('click', function() { saveDrawer(true); });
+    document.getElementById('chTestBtn').addEventListener('click', function() { runDrawerTest(); });
+    document.getElementById('chDrawerSwitch').addEventListener('change', function() {
+      var on = document.getElementById('chDrawerSwitch').checked;
+      document.getElementById('chDrawerOffBanner').style.display = on ? 'none' : '';
+      markDrawerDirty();
+    });
+    document.getElementById('chDrawer').addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') { e.preventDefault(); closeDrawer(false); return; }
+      if (e.key !== 'Tab') return;
+      var focusables = Array.from(document.getElementById('chDrawer')
+        .querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select, textarea'))
+        .filter(function(el) { return el.offsetParent !== null; });
+      if (!focusables.length) return;
+      var first = focusables[0], last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
+
+    /* ---------- 初始化 ---------- */
+    (async function init() {
+      try {
+        await ST.configReady;
+      } catch (e) {
+        return; /* 门禁错误横幅由 ST 呈现，禁止按错误时区渲染 */
+      }
+      renderHours();
+      renderCards();
+      refreshHealth();
+      ST.CHANNELS.forEach(function(def) { fetchLast(def.name); });
+      setInterval(updateHoursSummary, 30000);
+      var open = new URLSearchParams(window.location.search).get('open');
+      if (open && FIELD_DEFS[open]) openDrawer(open);
+    })();
+  </script>
+</body>
+</html>

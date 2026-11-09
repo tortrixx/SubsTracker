@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { env } from 'cloudflare:test';
 import app from '../../src/app.ts';
 import { getConfig } from '../../src/data/config.ts';
+import { query as queryNotifyLogs } from '../../src/data/notification-logs.repo.ts';
 
 async function clearKv() {
   const list = await env.SUBSCRIPTIONS_KV.list();
@@ -147,6 +148,65 @@ describe('POST /api/test-notification (email)', () => {
     expect(sentBody.subject).toContain('示例');
     expect(sentBody.html).toContain('示例 · Netflix');
     expect(sentBody.html).toContain('示例 · Spotify');
+  });
+});
+
+describe('POST /api/test-notification 落通知日志（渠道测试）', () => {
+  it('测试成功后按渠道可查到来源为测试（ruleId=test）的日志', async () => {
+    const cookie = await loginCookie();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ id: 'mail-1' }), { status: 200 })
+    );
+    const response = await app.request('/api/test-notification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({
+        type: 'email',
+        RESEND_API_KEY: 'rk',
+        EMAIL_FROM: 'a@b.com',
+        EMAIL_TO: 'c@d.com'
+      })
+    }, env);
+    expect((await response.json()).success).toBe(true);
+
+    const logs = await queryNotifyLogs(env, { channel: 'email' });
+    const testLogs = logs.filter((l) => l.ruleId === 'test');
+    expect(testLogs.length).toBeGreaterThanOrEqual(1);
+    expect(testLogs[0].channel).toBe('email');
+    expect(testLogs[0].status).toBe('success');
+    expect(testLogs[0].subId).toBe('channel-test');
+
+    // 活动页接口（GET /api/notification-logs?channel=）同样能查到
+    const listRes = await app.request('/api/notification-logs?channel=email', {
+      headers: { Cookie: cookie }
+    }, env);
+    const listBody = await listRes.json();
+    expect(listBody.success).toBe(true);
+    expect(listBody.logs.some((l) => l.ruleId === 'test' && l.status === 'success')).toBe(true);
+  });
+
+  it('测试失败也落日志（status=failed，带失败原因）', async () => {
+    const cookie = await loginCookie();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ message: 'invalid api key' }), { status: 401 })
+    );
+    const response = await app.request('/api/test-notification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({
+        type: 'email',
+        RESEND_API_KEY: 'bad',
+        EMAIL_FROM: 'a@b.com',
+        EMAIL_TO: 'c@d.com'
+      })
+    }, env);
+    expect((await response.json()).success).toBe(false);
+
+    const logs = await queryNotifyLogs(env, { channel: 'email' });
+    const testLogs = logs.filter((l) => l.ruleId === 'test');
+    expect(testLogs.length).toBeGreaterThanOrEqual(1);
+    expect(testLogs[0].status).toBe('failed');
+    expect(testLogs[0].error).toBeTruthy();
   });
 });
 
