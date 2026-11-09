@@ -8,7 +8,8 @@ coverage/
 # 本地调研 / 审计草稿 / 内部文档，不入库
 优化文档/
 CHANGELOG-TEST.md
-docs/
+docs/*
+!docs/ARCHITECTURE.md
 FULL_AUDIT_REPORT.md
 *_AUDIT_REPORT.md
 *_AUDIT*.md
