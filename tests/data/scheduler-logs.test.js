@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 // @ts-ignore
 import { env } from 'cloudflare:test';
 
-import { writeLog, getRecent } from '../../src/data/scheduler-logs.repo.js';
+import { writeLog, getRecent } from '../../src/data/scheduler-logs.repo.ts';
 
 async function clearKv() {
   const list = await env.SUBSCRIPTIONS_KV.list();

@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 // @ts-ignore
 import { env } from 'cloudflare:test';
 
-import * as repo from '../../src/data/reminders.repo.js';
+import * as repo from '../../src/data/reminders.repo.ts';
 
 async function clearKv() {
   const list = await env.SUBSCRIPTIONS_KV.list();

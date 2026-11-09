@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 // @ts-ignore
 import { env } from 'cloudflare:test';
-import app from '../../src/app.js';
+import app from '../../src/app.ts';
 
 async function clearKv() {
   const list = await env.SUBSCRIPTIONS_KV.list();

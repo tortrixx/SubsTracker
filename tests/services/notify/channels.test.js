@@ -12,19 +12,19 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 // @ts-ignore
 import { env } from 'cloudflare:test';
 
-import { escapeMarkdownV2 } from '../../../src/services/notify/channel.js';
-import { telegramChannel } from '../../../src/services/notify/telegram.js';
-import { notifyxChannel } from '../../../src/services/notify/notifyx.js';
-import { barkChannel } from '../../../src/services/notify/bark.js';
-import { wecomChannel } from '../../../src/services/notify/wechat.js';
-import { gotifyChannel } from '../../../src/services/notify/gotify.js';
-import { serverChanChannel } from '../../../src/services/notify/serverchan.js';
-import { pushplusChannel } from '../../../src/services/notify/pushplus.js';
-import { wpushChannel } from '../../../src/services/notify/wpush.js';
-import { emailChannel } from '../../../src/services/notify/email.js';
-import { webhookChannel } from '../../../src/services/notify/webhook.js';
-import { dispatch, ALL_CHANNELS, testChannel } from '../../../src/services/notify/dispatch.js';
-import { query } from '../../../src/data/notification-logs.repo.js';
+import { escapeMarkdownV2 } from '../../../src/services/notify/channel.ts';
+import { telegramChannel } from '../../../src/services/notify/telegram.ts';
+import { notifyxChannel } from '../../../src/services/notify/notifyx.ts';
+import { barkChannel } from '../../../src/services/notify/bark.ts';
+import { wecomChannel } from '../../../src/services/notify/wechat.ts';
+import { gotifyChannel } from '../../../src/services/notify/gotify.ts';
+import { serverChanChannel } from '../../../src/services/notify/serverchan.ts';
+import { pushplusChannel } from '../../../src/services/notify/pushplus.ts';
+import { wpushChannel } from '../../../src/services/notify/wpush.ts';
+import { emailChannel } from '../../../src/services/notify/email.ts';
+import { webhookChannel } from '../../../src/services/notify/webhook.ts';
+import { dispatch, ALL_CHANNELS, testChannel } from '../../../src/services/notify/dispatch.ts';
+import { query } from '../../../src/data/notification-logs.repo.ts';
 
 /** 构造一个 Response */
 function jsonResponse(body, init = {}) {
@@ -335,7 +335,7 @@ describe('注册表完整性', () => {
 });
 
 
-import { ntfyChannel } from '../../../src/services/notify/ntfy.js';
+import { ntfyChannel } from '../../../src/services/notify/ntfy.ts';
 
 describe('ntfyChannel', () => {
   it('validateConfig：缺 topic 失败', () => {

@@ -29,7 +29,7 @@ import {
   getTimestampInTimezone,
   convertUTCToTimezone,
   extractTimezone
-} from '../../src/core/time.js';
+} from '../../src/core/time.ts';
 
 describe('isValidTimezone', () => {
   it('合法 IANA 时区返回 true', () => {

@@ -3,10 +3,10 @@
  * 提醒规则触发引擎单元测试（表驱动）
  */
 import { describe, it, expect } from 'vitest';
-import { shouldFire } from '../../../src/services/notify/reminder-engine.js';
+import { shouldFire } from '../../../src/services/notify/reminder-engine.ts';
 
 /**
- * @param {Partial<import('../../../src/data/reminders.repo.js').ReminderRule>} r
+ * @param {Partial<import('../../../src/data/reminders.repo.ts').ReminderRule>} r
  */
 function rule(r) {
   return {

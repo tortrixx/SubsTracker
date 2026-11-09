@@ -9,14 +9,14 @@ import { describe, it, expect, beforeEach } from 'vitest';
 // @ts-ignore — vitest-pool-workers 注入的虚拟模块
 import { env } from 'cloudflare:test';
 
-import * as subRepo from '../../src/data/subscriptions.repo.js';
+import * as subRepo from '../../src/data/subscriptions.repo.ts';
 import {
   ensureMigrations,
   migrateSubscriptions,
   SCHEMA_VERSION,
   _resetMigrationCache,
   _getCachedSchemaVersion
-} from '../../src/data/migrate.js';
+} from '../../src/data/migrate.ts';
 
 /** 把 KV 清空（仅遍历常见 KV key 前缀） */
 async function clearKv() {
@@ -156,7 +156,7 @@ describe('migrate.migrateSchedulerLogs', () => {
     ];
     await env.SUBSCRIPTIONS_KV.put('scheduler_status_history', JSON.stringify(v2History));
 
-    const { migrateSchedulerLogs } = await import('../../src/data/migrate.js');
+    const { migrateSchedulerLogs } = await import('../../src/data/migrate.ts');
     await migrateSchedulerLogs(env);
 
     const list = await env.SUBSCRIPTIONS_KV.list({ prefix: 'sched_log:' });

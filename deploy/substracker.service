@@ -1,0 +1,23 @@
+[Unit]
+Description=SubsTracker - 订阅到期提醒（Node 运行时 / SQLite 存储插件）
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/data/substracker/app
+ExecStart=/data/node24/bin/node dist/server.js
+EnvironmentFile=/data/substracker/substracker.env
+Restart=always
+RestartSec=3
+# 安全加固：仅 /data/substracker 可写（代码目录与数据库都在其中）
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=substracker
+
+[Install]
+WantedBy=multi-user.target

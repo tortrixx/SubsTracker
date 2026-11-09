@@ -5,8 +5,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 // @ts-ignore
 import { env } from 'cloudflare:test';
-import app from '../../src/app.js';
-import { getConfig } from '../../src/data/config.js';
+import app from '../../src/app.ts';
+import { getConfig } from '../../src/data/config.ts';
 
 async function clearKv() {
   const list = await env.SUBSCRIPTIONS_KV.list();
@@ -88,6 +88,22 @@ describe('POST /api/config', () => {
     expect(stored.TIMEZONE).toBe('UTC');
   });
 
+  it('APP_URL 可保存（带 trim），未设置时默认为空', async () => {
+    const cookie = await loginCookie();
+    expect((await getConfig(env)).APP_URL).toBe('');
+    const res = await app.request(
+      '/api/config',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ APP_URL: '  https://app.example.com/subs  ' })
+      },
+      env
+    );
+    expect(res.status).toBe(200);
+    expect((await getConfig(env)).APP_URL).toBe('https://app.example.com/subs');
+  });
+
   it('CLEAR_SECRET_FIELDS 可显式清空', async () => {
     const cookie = await loginCookie();
     await app.request(
@@ -104,6 +120,33 @@ describe('POST /api/config', () => {
     );
     const stored = await getConfig(env);
     expect(stored.TG_BOT_TOKEN).toBe('');
+  });
+});
+
+describe('POST /api/test-notification (email)', () => {
+  it('发送示例订阅版式邮件，主题注明示例', async () => {
+    const cookie = await loginCookie();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ id: 'mail-1' }), { status: 200 })
+    );
+    const response = await app.request('/api/test-notification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({
+        type: 'email',
+        RESEND_API_KEY: 'rk',
+        EMAIL_FROM: 'a@b.com',
+        EMAIL_TO: 'c@d.com'
+      })
+    }, env);
+    expect(response.status).toBe(200);
+    expect((await response.json()).success).toBe(true);
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).toBe('https://api.resend.com/emails');
+    const sentBody = JSON.parse(String(init.body));
+    expect(sentBody.subject).toContain('示例');
+    expect(sentBody.html).toContain('示例 · Netflix');
+    expect(sentBody.html).toContain('示例 · Spotify');
   });
 });
 

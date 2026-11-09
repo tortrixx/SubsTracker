@@ -5,8 +5,8 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 // @ts-ignore
 import { env } from 'cloudflare:test';
-import { generateJWT, verifyJWT } from '../../src/core/auth.js';
-import { convertToCNY, getDynamicRates } from '../../src/core/currency.js';
+import { generateJWT, verifyJWT } from '../../src/core/auth.ts';
+import { convertToCNY, getDynamicRates } from '../../src/core/currency.ts';
 
 async function clearKv() {
   const list = await env.SUBSCRIPTIONS_KV.list();

@@ -6,11 +6,11 @@ import { describe, it, expect, beforeEach } from 'vitest';
 // @ts-ignore
 import { env } from 'cloudflare:test';
 
-import app from '../../src/app.js';
-import * as subRepo from '../../src/data/subscriptions.repo.js';
-import * as remindersRepo from '../../src/data/reminders.repo.js';
-import { getConfig } from '../../src/data/config.js';
-import { putKVJson } from '../../src/data/kv.js';
+import app from '../../src/app.ts';
+import * as subRepo from '../../src/data/subscriptions.repo.ts';
+import * as remindersRepo from '../../src/data/reminders.repo.ts';
+import { getConfig } from '../../src/data/config.ts';
+import { putKVJson } from '../../src/data/kv.ts';
 
 async function clearKv() {
   const list = await env.SUBSCRIPTIONS_KV.list();

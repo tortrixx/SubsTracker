@@ -6,8 +6,8 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 // @ts-ignore
 import { env } from 'cloudflare:test';
-import app from '../../src/app.js';
-import { generateJWT, verifyJWT } from '../../src/core/auth.js';
+import app from '../../src/app.ts';
+import { generateJWT, verifyJWT } from '../../src/core/auth.ts';
 
 async function clearKv() {
   const list = await env.SUBSCRIPTIONS_KV.list();
@@ -46,7 +46,10 @@ describe('POST /api/login', () => {
     const body = await res.json();
     expect(body.success).toBe(true);
     expect(res.headers.get('Set-Cookie') || '').toMatch(/token=/);
+    // 会话 Cookie 安全属性三件套（审计锁定，防回归）
     expect(res.headers.get('Set-Cookie') || '').toMatch(/HttpOnly/i);
+    expect(res.headers.get('Set-Cookie') || '').toMatch(/Secure/i);
+    expect(res.headers.get('Set-Cookie') || '').toMatch(/SameSite=Strict/i);
   });
 
   it('错误密码 → success=false', async () => {
@@ -104,6 +107,10 @@ describe('GET /api/logout', () => {
     expect([302, 200].includes(res.status)).toBe(true);
     const setCookie = res.headers.get('Set-Cookie') || '';
     expect(setCookie).toMatch(/Max-Age=0|token=;/);
+    // 清除时也要带同样的安全属性，否则部分浏览器不认这次清除
+    expect(setCookie).toMatch(/HttpOnly/i);
+    expect(setCookie).toMatch(/Secure/i);
+    expect(setCookie).toMatch(/SameSite=Strict/i);
   });
 });
 

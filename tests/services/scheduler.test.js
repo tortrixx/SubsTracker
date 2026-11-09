@@ -12,11 +12,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 // @ts-ignore
 import { env } from 'cloudflare:test';
 
-import { checkExpiringSubscriptions } from '../../src/services/scheduler.js';
-import * as subRepo from '../../src/data/subscriptions.repo.js';
-import * as remindersRepo from '../../src/data/reminders.repo.js';
-import { getRecent } from '../../src/data/scheduler-logs.repo.js';
-import { query as queryNotifyLogs } from '../../src/data/notification-logs.repo.js';
+import { checkExpiringSubscriptions } from '../../src/services/scheduler.ts';
+import * as subRepo from '../../src/data/subscriptions.repo.ts';
+import * as remindersRepo from '../../src/data/reminders.repo.ts';
+import { getRecent } from '../../src/data/scheduler-logs.repo.ts';
+import { query as queryNotifyLogs } from '../../src/data/notification-logs.repo.ts';
 
 async function clearKv() {
   const list = await env.SUBSCRIPTIONS_KV.list();

@@ -3,7 +3,7 @@
  * endOfMonth 与周期加法边界
  */
 import { describe, it, expect } from 'vitest';
-import { addCalendarPeriodInTimezone, getDaysBetween, getTimezoneDateParts } from '../../src/core/time.js';
+import { addCalendarPeriodInTimezone, getDaysBetween, getTimezoneDateParts } from '../../src/core/time.ts';
 
 describe('addCalendarPeriodInTimezone endOfMonth', () => {
   it('1月31日 +1月 endOfMonth → 2月最后一天', () => {
