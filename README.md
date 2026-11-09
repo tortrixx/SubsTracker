@@ -1,387 +1,122 @@
-# SubsTracker — 订阅管理与提醒系统
+# SubsTracker
 
-基于 **Cloudflare Workers + KV** 的轻量级订阅到期提醒。在网页里管理订阅，到点通过 Telegram / Bark / 企业微信 / ntfy 等 **11 种渠道** 推送，并自带发送与调度日志方便排查。
+> 中文版：[README-zh.md](README-zh.md)
 
-**适合**：个人自托管、域名/会员/账单到期提醒。  
-**不适合**：多用户协作、复杂企业审批流。
+**A timed-trigger platform that happens to ship with subscriptions as its first plugin.**
 
----
+SubsTracker tracks recurring deadlines — today those are your subscriptions — evaluates reminder rules against them every hour, and dispatches notifications through 11 channels. It is built around a simple idea: *everything is a plugin around timed triggers*. Subscription expiry is the first trigger source; scheduled email and task reminders are on the [roadmap](#roadmap).
 
-## 目录
+One TypeScript codebase, two runtimes: deploy the exact same code to **Cloudflare Workers + KV** or to **your own Node server + SQLite**. Storage is a pluggable port, not a hard-coded dependency.
 
-1. [5 分钟上手](#-5-分钟上手)
-2. [部署](#-部署)
-3. [第一次必做配置](#-第一次必做配置)
-4. [日常怎么用](#-日常怎么用)
-5. [通知到底怎么工作](#-通知到底怎么工作重点必读)
-6. [功能一览](#-功能一览)
-7. [常见问题 FAQ](#-常见问题-faq)
-8. [升级 / 开发 / 第三方 API](#-升级--开发--第三方-api)
-9. [安全提醒](#-安全提醒)
+## Features
 
----
+- **Subscription management** — name, amount, currency, billing cycle (day / week / month / year, plus lunar cycles), trial flag, categories and tags, payment history, one-click renewal with preview and undo.
+- **Reminder rule engine** — per-subscription rules: *N* days/hours before expiry, on the day, or repeating after expiry until renewed/acknowledged. Ships with a sensible preset (7 / 3 / 1 days before + on the day).
+- **Editable global default rules** — the preset new subscriptions inherit is a real setting (`DEFAULT_REMINDER_RULES`), editable in the UI. An empty set is a deliberate choice and is honoured as-is.
+- **11 notification channels** — Email, Telegram, WeCom (WeChat Work), Bark, NotifyX, ServerChan, PushPlus, ntfy, Gotify, WPush, and a generic Webhook. Per-channel config drawers, enable switches, and one-click send tests that go through the real delivery pipeline.
+- **Sending hours** — restrict delivery to chosen hours of the day (in the configured timezone). Empty means *unrestricted*.
+- **Logs & health** — every send and every scheduler run is logged and filterable; a health line shows the last tick result on every page.
+- **Bilingual UI, lunar calendar** — Chinese/English interface conventions, lunar-cycle subscriptions (1900–2100), multi-currency amounts with monthly spend summaries.
+- **Dual runtime, pluggable storage** — Cloudflare KV, SQLite (`node:sqlite`), or in-memory, behind one `StoragePort` interface with a conformance check.
 
-## 🚀 5 分钟上手
+## Quick Start
 
-```text
-部署 Worker
-  → 用 admin / password 登录（立刻改密码）
-  → 系统配置：选时区（中国选 Asia/Shanghai）
-  → 系统配置：允许发送的小时（例如只想早上 8 点发就填 08）
-  → 勾选至少一种通知渠道并填好 Token，点「测试」直到成功
-  → 订阅列表：添加订阅（可用默认提醒预设 7/3/1 天 + 当天）
-  → 到点后去「通知历史」看是否发送 / 为何跳过
-```
+### Option A — Cloudflare Workers
 
-若中途卡住，先看下方 [常见问题 FAQ](#-常见问题-faq)。
-
----
-
-## 📦 部署
-
-### 方式一：命令行（推荐）
-
-```bash
-git clone https://github.com/wangwangit/SubsTracker.git
-cd SubsTracker
-npm install
-
-# Linux / macOS
-export CLOUDFLARE_API_TOKEN=你的token
-# Windows PowerShell
-# $env:CLOUDFLARE_API_TOKEN="你的token"
-
-npm run deploy:safe
-```
-
-`deploy:safe` 会：
-
-1. `npm run setup` — 自动创建 / 绑定 KV（`SUBSCRIPTIONS_KV`）
-2. `npm run deploy` — 部署 Worker
-
-部署成功后，终端会打印类似：
-
-`https://subscription-manager.<你的子域>.workers.dev`
-
-### 方式二：GitHub Actions
-
-1. Fork 本仓库  
-2. 仓库 **Settings → Secrets and variables → Actions** 增加：
-
-| Secret | 说明 |
-|--------|------|
-| `CLOUDFLARE_API_TOKEN` | 需 Workers 编辑 + KV 编辑权限 |
-| `CLOUDFLARE_ACCOUNT_ID` | 可选 |
-
-3. 推送到 `master` / `main` 或手动运行 **Deploy** workflow  
-
-### 默认登录
-
-| 项 | 值 |
-|----|-----|
-| 用户名 | `admin` |
-| 密码 | `password` |
-
-**登录后请立刻在「系统配置」修改密码。** 公网暴露默认密码会被接管。
-
-### 忘记密码
-
-Cloudflare Dashboard → **Workers & Pages → KV** → 打开 `SUBSCRIPTIONS_KV` → 编辑 key `config` 的 JSON，修改 `ADMIN_PASSWORD` 后保存。
-
----
-
-## ✅ 第一次必做配置
-
-打开 **系统配置**，建议按顺序做完：
-
-### 1. 改密码
-
-管理员用户名 / 密码改成自己的。页面若提示仍是默认 `admin`，请务必处理。
-
-### 2. 时区
-
-- 中国大陆用户：**`Asia/Shanghai`（北京时间）**
-- 所有「到期还有几天」「几点发通知」都以这里为准
-
-### 3. 允许发送的小时
-
-| 你填什么 | 含义 |
-|----------|------|
-| `08` | **仅**北京时间 **8 点那一小时**会发（约 8:00–8:59 的那次整点检查） |
-| `08, 20` | 早上 8 点、晚上 8 点各可能发一次 |
-| **留空** 或 `*` | **每个整点**都可以发 |
-
-要点：
-
-- 系统大约 **每小时整点** 检查一次（Cron：`0 * * * *`，按 UTC 触发，但判断用你配置的时区）。
-- 填了 `08`、现在是 19 点：**不会发**。通知历史里出现「不在允许发送的小时」是 **正常跳过**，不是坏了。
-- 配置页下方有实时预览（会显示「当前会发 / 不会发」）。**改完要点保存**，预览才与服务器一致。
-
-### 4. 打开至少一种通知渠道
-
-勾选渠道 → 填 Token / Chat ID 等 → 点 **测试 xxx 通知**，确认手机/群里能收到。
-
-常用渠道简表：
-
-| 渠道 | 你需要准备 |
-|------|------------|
-| Telegram | Bot Token + Chat ID；Forum 群可选 Topic ID |
-| Bark | Device Key；自建可填 Server |
-| 企业微信 | 群机器人 Webhook |
-| ntfy | Server（默认 ntfy.sh）+ Topic；可选 Token |
-| WPUSH | API Key；可选 Channel / Topic 编码 |
-| 邮件 | Resend API Key + 收发邮箱 |
-| Webhook | 任意 HTTP 地址 + 可选模板 |
-
-### 5. 加一条测试订阅
-
-- 到期日设近一点，提醒规则可用 **「应用预设 7/3/1/当天」**
-- 或临时加一条「到期前 0 天 / 到期当天」，并把「允许发送的小时」改成当前小时做联调（测完改回）
-
----
-
-## 📋 日常怎么用
-
-### 订阅列表
-
-| 操作 | 说明 |
-|------|------|
-| 添加 / 编辑 | 名称、周期、金额、分类、农历等 |
-| **克隆** | 复制一条（名称带「副本」），适合 esim 保号等同构订阅 |
-| 续订 | 手动延长周期并记支付 |
-| 停用 / 启用 | 停用后不再提醒（本地刷新，不必整页重载） |
-| 测试 | 立刻对该订阅发一条测试通知 |
-| 历史 | 支付记录 |
-| 筛选 | 关键词、循环/重置模式、**状态**（正常/即将到期/已过期/已停用）、分类 |
-
-### 提醒规则（每条订阅可多条）
-
-默认预设：**到期前 7 天、3 天、1 天 + 到期当天**。
-
-**重要语义（很多人误解这里）：**
-
-> 「到期前 N 天」= **剩余天数正好等于 N 的那一天发一次**  
-> **不会**从第 N 天起每天连发。
-
-若要 7、6、5… 都提醒，需要多条规则，或使用预设 7/3/1/当天。
-
-其它类型：
-
-- **到期当天**
-- **到期后**：每隔 X 小时提醒，直到你续费（受「允许发送的小时」约束）
-
-### 订阅模式：循环 vs 到期重置
-
-| 模式 | 一句话 | 例子 |
-|------|--------|------|
-| **循环订阅** | 未过期就从**当前到期日**往后接 | 会员 6/15 到期，6/3 续费 → 新到期约 7/15 |
-| **到期重置** | 从**支付日**重新算一整段周期 | 保号卡充值日重新起算 180 天 |
-
-### 周期快捷
-
-表单里可用 **季度 / 半年 / 一年** 快捷（本质是 3 个月 / 6 个月 / 1 年）。  
-公历可勾选 **「每月最后一天」**（适合「每月月末提醒」；农历下不用这个）。
-
-### 备份与迁移
-
-在 **系统配置** 最下方：
-
-1. **导出备份** → 下载 JSON（默认可不含密钥）
-2. 换账号 / 重装后 **导入**  
-   - **合并**：按订阅 ID 覆盖同名，保留其它  
-   - **覆盖**：先清空再整包导入（危险，先导出当前数据）
-
-升级大版本或迁移 CF 账号前，**先导出一份**。
-
----
-
-## 🔔 通知到底怎么工作（重点必读）
-
-```text
-每小时整点 Cron
-  → 看现在是否在「允许发送的小时」（按时区）
-  → 看每条启用中的订阅是否命中某条提醒规则（精确日/小时）
-  → 去重（同一天同一规则不重复刷）
-  → 发到你启用的渠道
-  → 写入「通知历史」+「调度日志」
-```
-
-「允许发送的小时」是发送窗口。例如填 `08, 12`，命中同一条日级规则后通常只在 08 点发送一次，12 点不会重复发送；它不是每天发送两次的计划。
-
-| 现象 | 通常原因 |
-|------|----------|
-| 任务历史：不在允许发送的小时 | 当前整点不在你填的 `08` 等列表里 → **正常** |
-| 在窗口内但 sentCount=0 | 今天没有规则被命中（还没到「正好 N 天」） |
-| 有 failed 记录 | 渠道配置错 / Token 失效 / 网络拒绝 → 看错误详情 |
-| 一天只在 8 点附近收到 | 你只配置了 `08`，符合预期 |
-| 希望一天提醒多次 | 把允许小时写成多个，如 `08, 12, 20`，或留空 |
-
-**列表上的「提醒」列**：显示该订阅真实多规则摘要（如 `提前 7/3/1 天 · 到期当天`），与后台 `reminder_rules` 一致。
-
----
-
-## ✨ 功能一览
-
-### 订阅
-
-- 增删改查、启用/停用、克隆、筛选  
-- 多规则提醒、农历周期、自动/手动续订、支付历史  
-- 季/半年快捷、公历月末选项  
-
-### 通知渠道（10）
-
-Telegram · NotifyX · Webhook · 企业微信 · Resend 邮件 · Bark · Gotify · Server酱 · PushPlus · ntfy · **WPUSH**
-
-### 可观测
-
-- `/admin/notify-logs`：发送成功/失败明细  
-- 调度日志：命中/去重/跳过原因  
-- `/debug`：时区与通知窗口诊断（需登录）  
-
-### 财务
-
-多币种、仪表盘支出统计（依赖支付记录与汇率；汇率接口失败时有兜底）
-
----
-
-## ❓ 常见问题 FAQ
-
-### 1. 为什么没收到通知？
-
-按顺序查：
-
-1. **系统配置**是否启用了渠道？「测试」能否收到？  
-2. **允许发送的小时**是否包含「现在」？（填了 `08` 则只有 8 点）  
-3. **时区**是否是 `Asia/Shanghai`？  
-4. 该订阅是否 **启用**？提醒规则是否启用？  
-5. 今天是否正好命中「到期前 N 天 / 当天」？  
-6. 打开 **通知历史**：  
-   - 有 failed → 看渠道报错  
-   - 只有跳过、写着不在允许小时 → 等到配置的小时  
-   - 完全没有相关记录 → 可能还没到整点检查，或规则未命中  
-
-### 2. 任务历史写「不在允许发送的小时 / 不在配置时段」？
-
-说明定时任务跑了，但当前小时不允许发。  
-例如只允许 `08`，晚上 19 点跳过 → **正常**。  
-到北京时间 8 点再看是否发送。
-
-### 3. 设置了「到期前 7 天」，为什么第 6～1 天没有通知？
-
-这是 **精确日** 设计：只在剩余 **正好 7 天** 那天发。  
-需要多天提醒请加多条规则，或用预设 **7/3/1/当天**。
-
-### 4. 列表提醒一直显示「提前 7 天」？
-
-当前版本列表会读真实规则摘要。请 **强制刷新**（Ctrl+Shift+R）。  
-若仍不对，打开浏览器开发者工具 → Network → `subscriptions`，看返回里是否有 `reminderRulesSummary`。
-
-### 5. 克隆按钮看不见或没颜色？
-
-操作列有 **克隆**（青色）。强制刷新；按钮在「编辑」后面。  
-若只有灰字，确认已部署含主题样式的最新版本。
-
-### 6. 循环订阅和到期重置有啥区别？
-
-见上文表格：会员续费用 **循环**；按充值日重算周期用 **重置**。
-
-### 7. 如何备份 / 换 Cloudflare 账号？
-
-系统配置 → **导出备份** → 新环境部署后 **导入**。  
-覆盖模式会清空现有订阅，操作前再导出一次当前数据。
-
-### 8. Telegram 如何发到群话题（Topic）？
-
-系统配置 → Telegram → 填写可选 **Topic ID**（对应 `message_thread_id`）。  
-普通私聊/普通群可留空。
-
-### 9. ntfy 怎么配？
-
-启用 ntfy → Server 默认 `https://ntfy.sh` → 填自己的 Topic → 手机 ntfy App 订阅同一 Topic → 点测试。
-
-### 10. WPUSH 怎么配？
-
-启用 WPUSH → 在 [设置页](https://wpush.cn/settings) 获取 API Key → 可选填写渠道 / Topic 编码 → 点测试。成功条件为接口返回 `code === 0`。
-
-### 11. 控制台里 `beacon.min.js` / cloudflareinsights 报错？
-
-那是 **Cloudflare 统计脚本**，不是本项目业务代码。一般可忽略，与订阅列表无关。
-
-### 12. Authentication error [code: 10000]（部署时）
-
-Token 权限不足或 Wrangler 缓存问题：检查 API Token 权限，必要时删 `.wrangler/` 后重试。
-
-### 13. 第三方系统想调通知接口？
-
-在系统配置生成 **第三方 API 令牌** 后：
-
-```bash
-curl -X POST "https://你的域名.workers.dev/api/notify/你的令牌" \
-  -H "Content-Type: application/json" \
-  -d '{"title":"标题","content":"正文"}'
-```
-
-也可用请求头：`Authorization: Bearer 你的令牌`。
-
----
-
-## 🔄 升级
-
-```bash
-git pull
-npm install
-npm run deploy:safe
-```
-
-首次访问会自动做 KV 结构迁移。升级前建议 **导出备份**。
-
-> 若很久以前按 **UTC** 理解「通知小时」，现在请一律按配置里的 **时区**（如北京时间）理解，并到配置页看预览。
-
----
-
-## 🛠 开发
+Prerequisites: Node.js, a Cloudflare account, Wrangler (via `npx`).
 
 ```bash
 npm install
-npm test           # 单元 / 集成测试
-npm run lint
-npx wrangler dev --config wrangler.dev.toml --local
-# http://127.0.0.1:8787  默认 admin / password
+npm run deploy:safe   # creates the KV namespace (scripts/setup-kv.cjs), then deploys
+# or, if KV is already set up:
+npm run deploy
 ```
 
-```text
-src/
-├── index.js           # fetch + scheduled 入口
-├── app.js             # Hono
-├── core/              # 时间、农历、货币、JWT
-├── data/              # KV 与迁移
-├── services/          # 调度器 + 通知渠道
-├── api/               # 路由与 handler
-└── views/             # 管理端 HTML
-public/                # 静态资源（如 api-client.js）
-tests/                 # Vitest + workerd
+`wrangler.toml` points at `src/index.ts`; Wrangler compiles the TypeScript directly — no pre-build needed. An hourly Cron Trigger drives the scheduler.
+
+### Option B — Self-hosted Node server
+
+Prerequisites: **Node.js ≥ 22** (the SQLite adapter uses the built-in `node:sqlite`).
+
+```bash
+npm install
+npm run build         # tsc → dist/ (views and the HTML loader are copied alongside)
+cp deploy/substracker.env.example substracker.env   # adjust PORT / HOST / SQLITE_PATH
+npm start             # node dist/server.js
 ```
 
----
+For production, a ready-made systemd unit ships in [`deploy/substracker.service`](deploy/substracker.service) (hardened, `Restart=always`, reads `substracker.env`). The Node composition root aligns its scheduler to the top of each hour and exposes `/healthz` for monitoring.
 
-## 🔐 安全提醒
+### First login
 
-1. **立刻修改** 默认 `admin` / `password`  
-2. 不要把 API Token、Bot Token 提交进 Git  
-3. 备份 JSON 若勾选「包含敏感配置」，请当密码一样保管  
-4. 对话、截图里不要长期暴露 Cloudflare API Token；泄露请到 Dashboard **轮换 Token**
+Sign in with the default account **`admin` / `password`**, then change the password immediately under **Settings → Account security**. All channel credentials are configured later in the UI under **Channels** — no secrets live in the repo.
 
----
+## Configuration
 
-## 🤝 贡献与协议
+Runtime configuration is stored in the app's own storage and edited in **Settings** (a small set of process-level variables — `PORT`, `HOST`, `STORAGE_DRIVER`, `SQLITE_PATH` — lives in `substracker.env` for the Node runtime). Key items:
 
-欢迎 Issue / PR。业务逻辑变更请尽量带测试。  
-MIT License。
+| Key | Meaning |
+| --- | --- |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | Admin account. Change the password after first login. |
+| `TIMEZONE` | All dates, countdowns and sending hours are interpreted in this zone (e.g. `Asia/Shanghai`). Edited in Settings only — it is the single source of truth for the whole UI. |
+| `APP_URL` | Public base URL of this deployment. When set, notification emails include an "open subscription manager" button. |
+| `NOTIFICATION_HOURS` | Hours of the day when sending is allowed, e.g. `["08","09","22"]`. **Empty = unrestricted** (every hourly tick may send). Edited on the Channels page. |
+| `DEFAULT_REMINDER_RULES` | The rule template applied to newly created subscriptions that don't specify their own rules. `null` (never configured) falls back to the built-in preset (7/3/1 days before + on the day); an empty array means new subscriptions deliberately get **no** rules. |
+| `THIRD_PARTY_API_TOKEN` | Token for the third-party trigger API (`/api/thirdparty/notify`). |
+| Channel credentials | Per channel, set in the Channels UI: e.g. `RESEND_API_KEY` + `EMAIL_FROM`/`EMAIL_TO` (email), `TG_BOT_TOKEN` + `TG_CHAT_ID` (Telegram), `BARK_DEVICE_KEY`, `SERVERCHAN_SENDKEY`, `PUSHPLUS_TOKEN`, `NTFY_TOPIC`, `GOTIFY_SERVER_URL` + app token, `WECHATBOT_WEBHOOK`, `WEBHOOK_URL`. Values are never committed — they exist only in your deployment's storage. |
 
----
+Invalid `DEFAULT_REMINDER_RULES` payloads are rejected as a whole (HTTP 400); the previously stored value is kept.
 
-## 关注作者
+## How Reminders Work
 
-![image](https://github.com/user-attachments/assets/96bae085-4299-4377-9958-9a3a11294efc)
+1. **Tick** — once per hour (Workers Cron Trigger, or the Node scheduler aligned to the hour) the scheduler runs.
+2. **Evaluate** — each active subscription's reminder rules are evaluated against its (next) expiry date in the configured timezone.
+3. **Filter** — if `NOTIFICATION_HOURS` is non-empty and the current hour is not in it, sending is deferred.
+4. **Dispatch** — due reminders are sent through every enabled channel. The notification title leads with the most urgent subscription.
+5. **Retry** — deduplication markers are written only when at least one channel succeeds, so a failed reminder is retried automatically on the next tick.
+6. **Log** — sends and scheduler runs land in the Activity page, tagged by origin (scheduled rule, `manual-test`, channel `test`, or `thirdparty`).
 
-CDN 加速由 Tencent EdgeOne 赞助。
+## Architecture
+
+Ports-and-adapters: business logic depends only on abstractions; the two entry points are thin composition roots.
+
+- `src/index.ts` — Cloudflare Workers root (KV binding is the storage implementation, zero adapter code).
+- `src/server.ts` — Node root (`@hono/node-server`, static views, hour-aligned scheduler, graceful shutdown).
+- `src/platform/storage/storage-port.ts` — the `StoragePort` interface (a KV-shaped subset: `get/put/delete/list` + TTL); adapters in the same directory (`sqlite-storage.ts`, `memory-storage.ts`). Verify any adapter with `npm run check:storage`.
+- `src/views/` — five pages (Dashboard, Subscriptions, Channels, Activity, Settings) plus `theme-resources.html`, the shared design system and `window.ST` runtime the pages are built on.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
+
+## Development
+
+```bash
+npm run dev            # wrangler dev (Workers runtime)
+npm run build          # type-check build → dist/ for the Node runtime
+npm test               # vitest suite (279 tests)
+npm run lint           # tsc --noEmit (strict)
+npm run check:storage  # storage-adapter conformance checks against dist/
+```
+
+TypeScript is `strict` across the repo — no `@ts-ignore`, no implicit `any`. Changes should land with the full suite green.
+
+## Roadmap
+
+SubsTracker is evolving from a subscription notifier into the timed-trigger platform described above, in small, independently shippable steps:
+
+1. **Channel registry** — give all 11 channels manifests and a plugin registry; dispatch resolves channels from the registry. *(planned)*
+2. **Kernel split** — separate the scheduler into a trigger kernel (`runTick`) and the subscription plugin's evaluator. *(planned)*
+3. **Pipeline promotion** — executors take (event, binding); channel adapters become action plugins. *(planned)*
+4. **Schema-driven settings** — channel drawers generated from config schemas. *(planned; today's drawers are the hand-written prototype)*
+5. **Scheduled email plugin** — the first declarative trigger source: drafts, send-at scheduling, a `send-mail` action. *(planned)*
+6. **Task reminders plugin** — a second declarative source, reusing the offset/rule editor. *(planned)*
+7. **Unified activity log** — plugin-origin filtering across all sources. *(optional, last)*
+
+Already in place as groundwork: dual-runtime single codebase, pluggable storage, structured notification payloads, and editable global default rules.
+
+## Credits
+
+Forked from [wangwangit/SubsTracker](https://github.com/wangwangit/SubsTracker). The design language of the v3 UI borrows from Meta's Astryx design system and Craft's glass aesthetic.
+
+## License
+
+[MIT](LICENSE)
