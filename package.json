@@ -1,7 +1,7 @@
 {
   "name": "subscription-manager",
   "version": "3.0.0",
-  "description": "订阅管理系统 - 基于 Cloudflare Workers + Hono",
+  "description": "SubsTracker — a timed-trigger platform with subscriptions as the first plugin. One TypeScript codebase for Cloudflare Workers + KV and self-hosted Node + SQLite, with a reminder rule engine and 11 notification channels.",
   "main": "src/index.ts",
   "type": "module",
   "scripts": {
@@ -30,9 +30,13 @@
   },
   "keywords": [
     "cloudflare-workers",
+    "self-hosted",
     "subscription-management",
     "notification",
+    "reminder",
     "lunar-calendar",
+    "sqlite",
+    "typescript",
     "hono"
   ],
   "license": "MIT"
