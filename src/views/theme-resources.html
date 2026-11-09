@@ -702,17 +702,20 @@
   .st-hour:hover { border-color: var(--hairline-strong); color: var(--text-main); }
   .st-hour.is-on { background: rgba(0, 113, 227, 0.12); border-color: rgba(0, 113, 227, 0.45); color: #0060C9; }
   html.dark .st-hour.is-on { background: rgba(41, 151, 255, 0.16); border-color: rgba(41, 151, 255, 0.5); color: #2997FF; }
-  .st-hour-presets { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-  .st-hour-preset {
-    min-height: 28px; padding: 3px 12px; border-radius: 999px; border: 1px solid var(--hairline);
-    background: transparent; color: var(--text-muted); font-size: var(--fs-xs); font-weight: 600; cursor: pointer;
-    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
-  }
-  .st-hour-preset:hover { border-color: var(--hairline-strong); color: var(--text-main); }
-  .st-hour-preset.is-active { background: rgba(0, 113, 227, 0.12); border-color: rgba(0, 113, 227, 0.45); color: #0060C9; }
-  html.dark .st-hour-preset.is-active { background: rgba(41, 151, 255, 0.16); border-color: rgba(41, 151, 255, 0.5); color: #2997FF; }
   .st-hour.is-invalid { border-color: var(--tone-danger-text); color: var(--tone-danger-text); background: var(--tone-danger-bg); }
   .st-hours.is-disabled { opacity: 0.5; pointer-events: none; }
+
+  /* 发送时段：一句话时段控件（仅在 [起] — [止] 之间发送）+ 逐小时高级开关 */
+  .st-range-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; font-size: var(--fs-base); color: var(--text-main); }
+  .st-time-select {
+    background: var(--surface); color: var(--text-main);
+    border: 1px solid var(--hairline-strong); border-radius: var(--radius-s);
+    font-size: var(--fs-base); font-weight: 600; padding: 6px 10px; cursor: pointer; font-family: inherit;
+  }
+  .st-range-dash { color: var(--text-muted); }
+  .st-wrap-badge { font-size: var(--fs-xs); font-weight: 600; color: var(--accent); border: 1px solid var(--hairline-strong); border-radius: 999px; padding: 2px 8px; }
+  .st-adv-toggle { background: none; border: none; color: var(--accent); font-size: var(--fs-xs); font-weight: 600; cursor: pointer; padding: 0; margin-top: 10px; font-family: inherit; }
+  .st-adv-toggle:hover { text-decoration: underline; }
 
   /* === SegmentedControl === */
   .st-seg {
