@@ -40,12 +40,16 @@ export const ALL_CHANNELS: Record<string, Channel> = {
 };
 
 export interface DispatchOptions {
+  /** 可选的渠道子集；仍受 ENABLED_NOTIFIERS 约束。 */
+  channels?: string[];
   /** 若提供，会同时把每条结果写入 notify_log */
   env?: AppEnv;
   /** 关联的订阅 ID（写日志用） */
   subId?: string;
   /** 触发的提醒规则 ID（写日志用） */
   ruleId?: string;
+  /** 聚合通知中的所有订阅和规则；每项各写一条记录，便于按订阅查询。 */
+  logTargets?: Array<{ subId: string; ruleId?: string }>;
   /** 附加给 channel.send 的 metadata */
   metadata?: ChannelMetadata;
   /** console 日志前缀 */
@@ -71,7 +75,8 @@ export async function dispatch(
   const enabled = Array.isArray(config.ENABLED_NOTIFIERS) ? config.ENABLED_NOTIFIERS : [];
   const prefix = options.logPrefix || '[notify]';
 
-  const channels = enabled
+  const channels = [...new Set(enabled)]
+    .filter((name) => Object.hasOwn(ALL_CHANNELS, name) && (!options.channels || options.channels.includes(name)))
     .map((name) => ALL_CHANNELS[name])
     .filter((ch) => ch != null);
 
@@ -115,21 +120,25 @@ export async function dispatch(
     }
 
     // 写通知日志（带 env 时）
-    if (options.env && options.subId) {
-      try {
-        await writeLog(options.env, {
-          subId: options.subId,
-          ruleId: options.ruleId || null,
-          channel: r.channel,
-          status: r.success ? 'success' : 'failed',
-          title: payload.title,
-          content: payload.content,
-          error: r.error,
-          raw: r.raw
-        });
-      } catch (err) {
-        console.warn(`${prefix} 写通知日志失败:`, err);
-      }
+    const targets = options.logTargets ?? (options.subId ? [{ subId: options.subId, ruleId: options.ruleId }] : []);
+    if (options.env) {
+      const env = options.env;
+      await Promise.all(targets.map(async (target) => {
+        try {
+          await writeLog(env, {
+            subId: target.subId,
+            ruleId: target.ruleId || null,
+            channel: r.channel,
+            status: r.success ? 'success' : 'failed',
+            title: payload.title,
+            content: payload.content,
+            error: r.error,
+            raw: r.raw
+          });
+        } catch (err) {
+          console.warn(`${prefix} 写通知日志失败:`, err);
+        }
+      }));
     }
   }
 
@@ -146,7 +155,7 @@ export async function dispatch(
  * 测试某个渠道（用于配置页"测试发送"按钮）。
  */
 export async function testChannel(channelName: string, config: AppConfig): Promise<ChannelResult> {
-  const ch = ALL_CHANNELS[channelName];
+  const ch = Object.hasOwn(ALL_CHANNELS, channelName) ? ALL_CHANNELS[channelName] : undefined;
   if (!ch) {
     return {
       success: false,

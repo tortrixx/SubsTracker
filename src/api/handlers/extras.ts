@@ -20,7 +20,8 @@ import * as remindersRepo from '../../data/reminders.repo.js';
 import * as notifyLogsRepo from '../../data/notification-logs.repo.js';
 import * as schedLogsRepo from '../../data/scheduler-logs.repo.js';
 import { getCategories, addCategory } from '../../data/categories.js';
-import { getNextFireTime } from '../../services/notify/reminder-engine.js';
+import { nextMatchingCheck } from '../../services/notify/next-check.js';
+import { getConfig } from '../../data/config.js';
 import type { AppEnv } from '../../platform/storage/storage-port.js';
 import type { ReminderRule } from '../../data/reminders.repo.js';
 import type { NotifyLogQuery } from '../../data/notification-logs.repo.js';
@@ -72,9 +73,11 @@ export async function handleExtraRoutes(request: Request, env: AppEnv, path: str
     const sub = await getSubscription(subId, env);
     if (!sub) return json({ success: false, message: '订阅不存在' }, 404);
     const rules = await remindersRepo.listForSubscription(env, subId);
-    const nowIso = new Date().toISOString();
+    const config = await getConfig(env);
+    const now = new Date();
     const times = rules
-      .map((r) => ({ ruleId: r.id, type: r.type, value: r.value, unit: r.unit, nextFireTime: getNextFireTime(r, sub.expiryDate, nowIso) }))
+      .filter((r) => sub.isActive && !(sub.autoRenew && r.type === 'after_expiry'))
+      .map((r) => ({ ruleId: r.id, type: r.type, value: r.value, unit: r.unit, nextFireTime: nextMatchingCheck(r, sub.expiryDate, config.TIMEZONE || 'UTC', Array.isArray(config.NOTIFICATION_HOURS) ? config.NOTIFICATION_HOURS : [], now) }))
       .filter((t) => t.nextFireTime !== null)
       // filter 已剔除 null，剩余值必为时间串（类型断言仅过类型层）
       .sort((a, b) => new Date(a.nextFireTime as string).getTime() - new Date(b.nextFireTime as string).getTime());

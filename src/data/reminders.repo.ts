@@ -190,16 +190,20 @@ export function normalizeRule(raw: unknown): ReminderRule {
  * 读取一个订阅的所有提醒规则。
  *
  */
-export async function listForSubscription(env: AppEnv, subId: string): Promise<ReminderRule[]> {
+export async function getStoredRules(env: AppEnv, subId: string): Promise<ReminderRule[] | null> {
   const raw = await env.SUBSCRIPTIONS_KV.get(KEY_PREFIX + subId);
-  if (!raw) return [];
+  if (raw === null) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(parsed)) throw new Error('规则数据不是数组');
     return parsed.map(normalizeRule);
   } catch {
-    return [];
+    throw new Error(`订阅 ${subId} 的提醒规则数据无效`);
   }
+}
+
+export async function listForSubscription(env: AppEnv, subId: string): Promise<ReminderRule[]> {
+  return (await getStoredRules(env, subId)) ?? [];
 }
 
 /**

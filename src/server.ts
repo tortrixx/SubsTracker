@@ -65,9 +65,12 @@ const env: AppEnv = {
 
 // 启动时先跑迁移，保证数据结构就绪（请求中间件里也会兜底）
 try {
-  await ensureMigrations(env);
+  const migration = await ensureMigrations(env);
+  if (migration.reason === 'locked_elsewhere') throw new Error('数据迁移正在其他实例中执行');
 } catch (err) {
   console.error('[server] 启动迁移失败:', err);
+  if (storage && typeof storage.close === 'function') storage.close();
+  process.exit(1);
 }
 
 // ── HTTP 装配 ────────────────────────────────────────────────
@@ -88,7 +91,8 @@ const server = serve({ fetch: root.fetch, port, hostname }, (info) => {
 if ((process.env.SCHEDULER_ENABLED || 'true').toLowerCase() !== 'false') {
   const runScheduler = async () => {
     try {
-      await ensureMigrations(env);
+      const migration = await ensureMigrations(env);
+      if (migration.reason === 'locked_elsewhere') throw new Error('数据迁移进行中，跳过本次定时检查');
       const entry = await checkExpiringSubscriptions(env);
       console.log('[scheduler] 整点检查完成', entry ? `status=${entry.status}` : '');
     } catch (err) {

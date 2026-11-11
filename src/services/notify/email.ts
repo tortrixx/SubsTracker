@@ -78,7 +78,7 @@ function parseContent(content: string): { subscriptions: RenderSubscription[]; p
     const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
     if (lines.length === 0) continue;
 
-    if (/^发送时间[:：]/.test(lines[0])) {
+    if (/^(发送时间|时区)[:：]/.test(lines[0])) {
       meta.push(...lines);
       continue;
     }
@@ -125,7 +125,6 @@ function structureSubscriptions(metadata: ChannelMetadata | undefined, timezone:
   const list = metadata && Array.isArray(metadata.subscriptions) ? metadata.subscriptions : null;
   if (!list || list.length === 0) return null;
 
-  const periodUnits: Record<string, string> = { day: '天', month: '月', year: '年' };
   const subscriptions: RenderSubscription[] = [];
 
   for (const s of list) {
@@ -135,25 +134,18 @@ function structureSubscriptions(metadata: ChannelMetadata | undefined, timezone:
     const status = days < 0
       ? `已过期 ${Math.abs(days)} 天`
       : days === 0
-        ? '今天到期！'
-        : `将在 ${days} 天后到期`;
+        ? '今天到期'
+        : `${days} 天后到期`;
 
     const rows: RenderRow[] = [];
-    const periodText = s.periodValue && s.periodUnit
-      ? `(周期: ${s.periodValue} ${periodUnits[s.periodUnit] || s.periodUnit})`
-      : '';
-    rows.push({ key: '类型', value: `${s.customType || '其他'} ${periodText}`.trim() });
-    rows.push({ key: '分类', value: s.category || '未分类' });
+    rows.push({ key: '到期日期', value: formatTimeInTimezone(new Date(s.expiryDate), timezone, 'date') });
     const amountText = formatAmount(s.amount, s.currency || 'CNY');
     if (amountText) rows.push({ key: '金额', value: `${amountText}/周期` });
-    rows.push({ key: '日历类型', value: s.useLunar ? '农历' : '公历' });
-    rows.push({ key: '到期日期', value: formatTimeInTimezone(new Date(s.expiryDate), timezone, 'date') });
     if (showLunar) {
       const lunarText = formatLunarExpiryText(new Date(s.expiryDate), timezone);
       if (lunarText) rows.push({ key: '农历日期', value: lunarText.replace(/^\n农历日期:\s*/, '') });
     }
-    rows.push({ key: '自动续期', value: s.autoRenew ? '是' : '否' });
-    if (s.reminderText) rows.push({ key: '提醒策略', value: String(s.reminderText) });
+    rows.push({ key: '续期', value: s.autoRenew ? '自动更新日期（不代付款）' : '手动更新日期' });
     if (s.notes) rows.push({ key: '备注', value: String(s.notes) });
 
     subscriptions.push({ name: s.name, status, rows, notes: [] });
@@ -280,7 +272,7 @@ function buildHtml(title: string, content: string, timezone: string, extras: Bui
 <tr>
 <td class="content-pad" style="padding:36px 32px 28px 32px;vertical-align:top;">
 
-  <p style="color:${MUTED};display:block;font-size:13px;font-weight:600;letter-spacing:1px;line-height:1.4;margin:0;padding:0;">📅 订阅管理</p>
+  <p style="color:${MUTED};display:block;font-size:13px;font-weight:600;letter-spacing:1px;line-height:1.4;margin:0;padding:0;">订阅管理</p>
   ${spacer(14)}
   <p class="title" style="color:${INK};display:block;font-size:24px;font-weight:700;line-height:1.25;margin:0;padding:0;">${safe(title)}</p>
   ${spacer(16)}

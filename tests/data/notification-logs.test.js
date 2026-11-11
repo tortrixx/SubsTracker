@@ -89,4 +89,20 @@ describe('notification-logs.repo', () => {
     await writeLog(env, { subId: 's2', channel: 'tg', status: 'success' });
     expect((await recentForSubscription(env, 's1', 10))).toHaveLength(3);
   });
+
+  it('同一毫秒的记录不会覆盖，并按实际时间取最近记录', async () => {
+    const timestamp = '2026-05-24T03:30:00.000Z';
+    await Promise.all(Array.from({ length: 3 }, () =>
+      writeLog(env, { subId: 'z', channel: 'tg', status: 'success', timestamp })
+    ));
+    await writeLog(env, { subId: 'a', channel: 'tg', status: 'success', timestamp: '2026-05-24T03:59:00.000Z' });
+    expect(await query(env, {})).toHaveLength(4);
+    expect((await query(env, { limit: 1 }))[0].subId).toBe('a');
+  });
+
+  it('忽略时间无效的历史记录', async () => {
+    await env.SUBSCRIPTIONS_KV.put('notify_log:2026052403:bad:none:tg:old', JSON.stringify({ timestamp: null }));
+    await writeLog(env, { subId: 'valid', channel: 'tg', status: 'success', timestamp: '2026-05-24T03:30:00Z' });
+    expect((await query(env, {})).map((entry) => entry.subId)).toEqual(['valid']);
+  });
 });

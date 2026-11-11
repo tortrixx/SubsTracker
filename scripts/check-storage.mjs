@@ -12,7 +12,7 @@ import { createSqliteStorage } from '../dist/platform/storage/sqlite-storage.js'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function contract(name, storage, close) {
+async function contract(name, storage) {
   await storage.put('cfg', JSON.stringify({ a: 1 }));
   assert.equal(await storage.get('cfg'), '{"a":1}', `${name}: get string`);
   assert.deepEqual(await storage.get('cfg', { type: 'json' }), { a: 1 }, `${name}: get json`);
@@ -40,18 +40,18 @@ async function contract(name, storage, close) {
   const expiredInList = await storage.list({ prefix: 'ttl' });
   assert.deepEqual(expiredInList.keys, [], `${name}: expired excluded from list`);
 
-  if (close) close();
   console.log(`✓ ${name} 通过 StoragePort 契约`);
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'substracker-storage-'));
 try {
   await contract('memory', createMemoryStorage());
-  await contract('sqlite', createSqliteStorage({ path: join(dir, 'test.sqlite') }), undefined);
-  // sqlite 适配器带 close：单独再开一个验证可关闭
-  const s = createSqliteStorage({ path: join(dir, 'test2.sqlite') });
-  await s.put('k', 'v');
-  s.close();
+  const sqlite = createSqliteStorage({ path: join(dir, 'test.sqlite') });
+  try {
+    await contract('sqlite', sqlite);
+  } finally {
+    sqlite.close();
+  }
   console.log('✓ sqlite close 正常');
 } finally {
   rmSync(dir, { recursive: true, force: true });

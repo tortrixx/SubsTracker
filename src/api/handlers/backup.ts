@@ -67,8 +67,8 @@ export async function handleExportBackup(request: Request, env: AppEnv): Promise
     const reminderRules: Record<string, ReminderRule[]> = {};
     for (const sub of subscriptions) {
       if (!sub || !sub.id) continue;
-      let rules = await remindersRepo.listForSubscription(env, sub.id);
-      if (rules.length === 0) {
+      let rules = await remindersRepo.getStoredRules(env, sub.id);
+      if (rules === null) {
         rules = [remindersRepo.legacyFieldToRule(sub)];
       }
       reminderRules[sub.id] = rules;
@@ -214,7 +214,7 @@ export async function handleImportBackup(request: Request, env: AppEnv): Promise
     // 兼容：body 直接是备份，或 { backup, mode, includeSecrets }
     const bodyObj = body as { backup?: unknown; mode?: unknown; includeSecrets?: unknown } | null;
     const rawBackup = bodyObj && bodyObj.backup ? bodyObj.backup : body;
-    const mode = bodyObj && bodyObj.mode === 'replace' ? 'replace' : 'merge';
+    const mode = bodyObj && bodyObj.mode === 'replace' ? 'replace' : bodyObj && bodyObj.mode === 'missing' ? 'missing' : 'merge';
     const includeSecrets = !!(bodyObj && bodyObj.includeSecrets);
 
     const validated = validateBackup(rawBackup);
@@ -233,6 +233,16 @@ export async function handleImportBackup(request: Request, env: AppEnv): Promise
         400
       );
     }
+    if (mode === 'missing') {
+      for (const sub of incomingSubs) {
+        if (await subRepo.exists(env, sub.id)) {
+          return json({ success: false, message: `订阅 ${sub.id} 已存在，无法撤销删除` }, 409);
+        }
+        if (!Array.isArray((backup.reminderRules as Record<string, unknown> | undefined)?.[sub.id])) {
+          return json({ success: false, message: '撤销删除需要完整的提醒规则快照' }, 400);
+        }
+      }
+    }
 
     const rulesMap: Record<string, unknown> =
       backup.reminderRules && typeof backup.reminderRules === 'object' ? backup.reminderRules : {};
@@ -250,6 +260,15 @@ export async function handleImportBackup(request: Request, env: AppEnv): Promise
       // 备份体只保证 id/name/expiryDate 已校验，写入边界处按 Subscription 断言
       await subRepo.replaceAll(env, incomingSubs as unknown as Subscription[]);
       importedSubs = incomingSubs.length;
+    } else if (mode === 'missing') {
+      // 先写规则再暴露订阅；失败时保留孤儿规则比让空规则回退旧值更安全。
+      for (const sub of incomingSubs) {
+        const rules = (rulesMap[sub.id] as unknown[]).map((r) => remindersRepo.normalizeRule(r));
+        await remindersRepo.replaceForSubscription(env, sub.id, rules);
+        importedRules += rules.length;
+        await subRepo.save(env, sub as unknown as Subscription);
+        importedSubs++;
+      }
     } else {
       for (const sub of incomingSubs) {
         await subRepo.save(env, sub as unknown as Subscription);
@@ -261,10 +280,12 @@ export async function handleImportBackup(request: Request, env: AppEnv): Promise
       const mappedRules = rulesMap[sub.id];
       let rules: unknown[] | null = Array.isArray(mappedRules) ? mappedRules : null;
       if (!rules && Array.isArray(sub.reminderRules)) rules = sub.reminderRules as unknown[];
-      if (rules && rules.length > 0) {
+      if (rules !== null) {
         const normalized = rules.map((r: unknown) => remindersRepo.normalizeRule(r));
-        await remindersRepo.replaceForSubscription(env, sub.id, normalized);
-        importedRules += normalized.length;
+        if (mode !== 'missing') {
+          await remindersRepo.replaceForSubscription(env, sub.id, normalized);
+          importedRules += normalized.length;
+        }
         try {
           const { syncLegacyReminderFields } = await import('../../data/subscriptions.js');
           await syncLegacyReminderFields(env, sub.id, normalized);

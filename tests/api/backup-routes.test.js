@@ -44,6 +44,46 @@ async function loginCookie() {
 beforeEach(clearKv);
 
 describe('GET /api/backup', () => {
+  it('撤销删除可恢复原 ID、支付记录及空规则，且不会覆盖现有订阅', async () => {
+    const cookie = await loginCookie();
+    const sub = { id: 'restore-id', name: '原订阅', expiryDate: '2026-10-01T00:00:00.000Z',
+      isActive: true, paymentHistory: [{ id: 'payment-1', date: '2026-09-01T00:00:00Z', amount: 42, currency: 'CNY', type: 'manual' }] };
+    await subRepo.save(env, sub);
+    await remindersRepo.replaceForSubscription(env, sub.id, []);
+    await app.request('/api/subscriptions/restore-id', { method: 'DELETE', headers: { Cookie: cookie } }, env);
+    const restore = () => app.request('/api/restore', {
+      method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'missing', backup: { subscriptions: [sub], reminderRules: { 'restore-id': [] } } })
+    }, env);
+    expect((await restore()).status).toBe(200);
+    expect((await subRepo.getById(env, sub.id)).paymentHistory).toEqual(sub.paymentHistory);
+    expect(await remindersRepo.getStoredRules(env, sub.id)).toEqual([]);
+    const existing = await subRepo.getById(env, sub.id);
+    existing.name = '已存在的订阅';
+    await subRepo.save(env, existing);
+    expect((await restore()).status).toBe(409);
+    expect((await subRepo.getById(env, sub.id)).name).toBe('已存在的订阅');
+  });
+
+  it('导出保留明确清空的规则，同时兼容不存在规则键的旧订阅', async () => {
+    const cookie = await loginCookie();
+    const base = { expiryDate: '2026-08-01T00:00:00.000Z', isActive: true, reminderValue: 7, reminderUnit: 'day' };
+    await subRepo.save(env, { ...base, id: 'silent', name: '无提醒' });
+    await remindersRepo.replaceForSubscription(env, 'silent', []);
+    await subRepo.save(env, { ...base, id: 'legacy', name: '旧订阅' });
+    const res = await app.request('/api/backup', { headers: { Cookie: cookie } }, env);
+    const backup = await res.json();
+    expect(backup.reminderRules.silent).toEqual([]);
+    expect(backup.reminderRules.legacy).toHaveLength(1);
+    expect(backup.reminderRules.legacy[0].value).toBe(7);
+    const restored = await app.request('/api/restore', {
+      method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backup, mode: 'replace' })
+    }, env);
+    expect(restored.status).toBe(200);
+    expect(await remindersRepo.getStoredRules(env, 'silent')).toEqual([]);
+  });
+
   it('未授权 → 401', async () => {
     const res = await app.request('/api/backup', {}, env);
     expect(res.status).toBe(401);
@@ -91,6 +131,19 @@ describe('GET /api/backup', () => {
 });
 
 describe('POST /api/restore', () => {
+  it('合并导入空规则会清除现有规则，保持不提醒', async () => {
+    const cookie = await loginCookie();
+    const sub = { id: 's1', name: '订阅', expiryDate: '2026-10-01T00:00:00.000Z', isActive: true };
+    await subRepo.save(env, sub);
+    await remindersRepo.replaceForSubscription(env, sub.id, [remindersRepo.normalizeRule({ type: 'on_expiry', value: 0 })]);
+    const res = await app.request('/api/restore', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ backup: { format: 'substracker-backup', version: 1, subscriptions: [sub], reminderRules: { s1: [] } }, mode: 'merge' })
+    }, env);
+    expect(res.status).toBe(200);
+    expect(await remindersRepo.getStoredRules(env, 's1')).toEqual([]);
+  });
+
   it('合并导入订阅与规则', async () => {
     const cookie = await loginCookie();
     await subRepo.save(env, {

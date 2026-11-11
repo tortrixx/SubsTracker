@@ -121,6 +121,32 @@ describe('保存过期订阅时的自动续订设置', () => {
 });
 
 describe('订阅 CRUD', () => {
+  it.each([{ periodValue: -1, periodUnit: 'month' }, { periodValue: 0, periodUnit: 'day' },
+    { periodValue: 1.5, periodUnit: 'day' }, { periodValue: 1, periodUnit: 'invalid' }])
+  ('拒绝不合法周期，避免过期日期推算不前进：%j', async (period) => {
+    const cookie = await loginCookie();
+    const body = { name: '无效周期', expiryDate: '2020-01-01', autoRenew: true, ...period };
+    const created = await app.request('/api/subscriptions', { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify(body) }, env);
+    expect(created.status).toBe(400);
+    await subRepo.save(env, { id: 'existing', name: '原记录', expiryDate: '2030-01-01T00:00:00Z', periodValue: 1, periodUnit: 'month', autoRenew: true, isActive: true, paymentHistory: [] });
+    const updated = await app.request('/api/subscriptions/existing', { method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify(body) }, env);
+    expect(updated.status).toBe(400);
+    expect((await subRepo.getById(env, 'existing')).name).toBe('原记录');
+  });
+  it('编辑时可清空试用或普通类型，未传类型则保留', async () => {
+    const cookie = await loginCookie();
+    for (const type of ['试用', '视频']) {
+      const created = await app.request('/api/subscriptions', { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ name: type, customType: type, expiryDate: '2027-01-01', autoRenew: false }) }, env);
+      const sub = (await created.json()).subscription;
+      const update = (body) => app.request(`/api/subscriptions/${sub.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify(body) }, env);
+      await update({ name: type, expiryDate: '2027-01-01', autoRenew: false });
+      expect((await subRepo.getById(env, sub.id)).customType).toBe(type);
+      await update({ name: type, expiryDate: '2027-01-01', autoRenew: false, customType: '' });
+      expect((await subRepo.getById(env, sub.id)).customType).toBe('');
+    }
+  });
   it('创建订阅成功并写入默认提醒规则', async () => {
     const cookie = await loginCookie();
     const res = await app.request(

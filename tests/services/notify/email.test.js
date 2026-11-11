@@ -85,10 +85,12 @@ describe('buildHtml 结构化渲染', () => {
       metadata: { subscriptions: [STRUCTURED_SUB] }
     });
     expect(html).toContain('结构化订阅');
-    expect(html).toContain('今天到期！');
+    expect(html).toContain('今天到期');
     expect(html).toContain('¥93.00/周期');
     expect(html).toContain('2026/05/31'); // 与文本路径相同的 zh-CN 日期格式
-    expect(html).toContain('提前 3 天');
+    expect(html).not.toContain('提醒策略');
+    expect(html.indexOf('到期日期')).toBeLessThan(html.indexOf('金额'));
+    expect(html).not.toContain('📅');
     expect(html).not.toContain('这段文本不包含');
   });
 
@@ -139,9 +141,10 @@ describe('emailChannel.test() 示例邮件', () => {
     expect(body.html).toContain('示例 · Netflix');
     expect(body.html).toContain('已过期 2 天');
     expect(body.html).toContain('示例 · iCloud');
-    expect(body.html).toContain('今天到期！');
+    expect(body.html).toContain('今天到期');
     expect(body.html).toContain('示例 · Spotify');
-    expect(body.html).toContain('将在 3 天后到期');
+    expect(body.html).toContain('3 天后到期');
+    expect(body.text).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
   });
 });
 
@@ -184,6 +187,6 @@ describe('scheduler → email 端到端', () => {
     expect(calls[0].url).toBe('https://api.resend.com/emails');
     expect(calls[0].body.subject).toBe('Netflix 3 天后到期');
     expect(calls[0].body.html).toContain('Netflix');
-    expect(calls[0].body.html).toContain('将在 3 天后到期');
+    expect(calls[0].body.html).toContain('3 天后到期');
   });
 });

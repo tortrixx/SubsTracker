@@ -1,4 +1,4 @@
-import { formatTimeInTimezone, formatTimezoneDisplay, getTimezoneDateParts } from '../../core/time.js';
+import { formatTimeInTimezone, getTimezoneDateParts } from '../../core/time.js';
 import { lunarCalendar } from '../../core/lunar.js';
 import { formatAmount } from '../../core/currency-format.js';
 import type { AppConfig } from '../../data/config.js';
@@ -114,11 +114,6 @@ function formatNotificationContent(subscriptions: NotificationSubscription[], co
   let content = '';
 
   for (const sub of subscriptions) {
-    const typeText = sub.customType || '其他';
-    const periodText = (sub.periodValue && sub.periodUnit) ? `(周期: ${sub.periodValue} ${ ({ day: '天', month: '月', year: '年' } as Record<string, string>)[sub.periodUnit] || sub.periodUnit})` : '';
-    const categoryText = sub.category ? sub.category : '未分类';
-    const reminderSetting = sub.matchedReminderRule ? null : resolveReminderSetting(sub);
-
     const expiryDateObj = new Date(sub.expiryDate);
     const formattedExpiryDate = formatTimeInTimezone(expiryDateObj, timezone, 'date');
 
@@ -128,38 +123,19 @@ function formatNotificationContent(subscriptions: NotificationSubscription[], co
     }
 
     let statusText = '';
-    let statusEmoji = '';
     if (sub.daysRemaining === 0) {
-      statusEmoji = '⚠️';
-      statusText = '今天到期！';
+      statusText = '今天到期';
     } else if (sub.daysRemaining < 0) {
-      statusEmoji = '🚨';
       statusText = `已过期 ${Math.abs(sub.daysRemaining)} 天`;
     } else {
-      statusEmoji = '📅';
-      statusText = `将在 ${sub.daysRemaining} 天后到期`;
+      statusText = `${sub.daysRemaining} 天后到期`;
     }
-
-    const reminderSuffix = reminderSetting?.value === 0
-      ? '（仅到期时提醒）'
-      : (reminderSetting?.unit === 'hour' ? '（小时级提醒）' : '');
-    const reminderText = sub.matchedReminderRule
-      ? `提醒策略: ${formatMatchedReminderRule(sub.matchedReminderRule)}`
-      : `提醒策略: 提前 ${reminderSetting!.value} ${reminderSetting!.unit === 'hour' ? '小时' : '天'}${reminderSuffix}`;
-
-    const calendarType = sub.useLunar ? '农历' : '公历';
-    const autoRenewText = sub.autoRenew ? '是' : '否';
     const formattedAmount = formatAmount(sub.amount, sub.currency || 'CNY');
     const amountText = formattedAmount ? `\n金额: ${formattedAmount}/周期` : '';
-
-    const subscriptionContent = `${statusEmoji} **${sub.name}**
-类型: ${typeText} ${periodText}
-分类: ${categoryText}${amountText}
-日历类型: ${calendarType}
-到期日期: ${formattedExpiryDate}${lunarExpiryText}
-自动续期: ${autoRenewText}
-${reminderText}
-到期状态: ${statusText}`;
+    const subscriptionContent = `${sub.name}
+到期状态: ${statusText}
+到期日期: ${formattedExpiryDate}${lunarExpiryText}${amountText}
+续期: ${sub.autoRenew ? '自动更新日期（不代付款）' : '手动更新日期'}`;
 
     let finalContent = sub.notes ? 
       subscriptionContent + `\n备注: ${sub.notes}` : 
@@ -168,8 +144,7 @@ ${reminderText}
     content += finalContent + '\n\n';
   }
 
-  const currentTime = formatTimeInTimezone(new Date(), timezone, 'datetime');
-  content += `发送时间: ${currentTime}\n当前时区: ${formatTimezoneDisplay(timezone)}`;
+  content += `时区: ${timezone}`;
 
   return content;
 }

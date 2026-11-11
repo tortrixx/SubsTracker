@@ -1,0 +1,15 @@
+.git
+.github
+.agents
+.codex
+.claude
+node_modules
+dist
+coverage
+.wrangler
+data
+.env*
+.dev.vars
+*.sqlite*
+*.pem
+*.key

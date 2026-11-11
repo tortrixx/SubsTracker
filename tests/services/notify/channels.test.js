@@ -82,6 +82,7 @@ describe('telegramChannel', () => {
     const body = JSON.parse(init.body);
     expect(body.parse_mode).toBe('MarkdownV2');
     expect(body.text).toContain('Adobe\\_Premiere\\_Pro');
+    expect(body.text.startsWith('Adobe\\_Premiere\\_Pro\n\n')).toBe(true);
     expect(body.text).toContain('\\(明天\\)');
     expect(body.text).toContain('\\!');
   });

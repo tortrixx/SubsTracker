@@ -1147,21 +1147,24 @@
         var incomplete = enabled.filter(function(n) { return ST.channelMissing(n, cfg).length > 0; });
         var since = new Date(Date.now() - 7 * 86400000).toISOString();
         var pSched = fetch('/api/scheduler-logs?limit=10', { credentials: 'same-origin' })
-          .then(function(r) { return r.json(); })
-          .then(function(j) { return (j && j.logs) || []; })
-          .catch(function() { return []; });
+          .then(function(r) { if (!r.ok) throw new Error('调度记录不可用'); return r.json(); })
+          .then(function(j) { if (!j || !Array.isArray(j.logs)) throw new Error('调度记录不可用'); return j.logs; })
+          .catch(function() { return null; });
         var pNotes = fetch('/api/notification-logs?since=' + encodeURIComponent(since) + '&limit=200', { credentials: 'same-origin' })
-          .then(function(r) { return r.json(); })
-          .then(function(j) { return (j && j.logs) || []; })
-          .catch(function() { return []; });
+          .then(function(r) { if (!r.ok) throw new Error('发送记录不可用'); return r.json(); })
+          .then(function(j) { if (!j || !Array.isArray(j.logs)) throw new Error('发送记录不可用'); return j.logs; })
+          .catch(function() { return null; });
         return Promise.all([pSched, pNotes]).then(function(res) {
-          var sched = res[0], notes = res[1];
+          var unavailable = !res[0] || !res[1];
+          var sched = res[0] || [], notes = res[1] || [];
           var failedRecent = 0;
           for (var i = 0; i < notes.length; i++) if (notes[i].status === 'failed') failedRecent++;
           var lastDue = null;
           for (var j = 0; j < sched.length; j++) { if (sched[j].status !== 'skipped') { lastDue = sched[j]; break; } }
           var tone, label, detail = '';
-          if (sched.length === 0 && notes.length === 0) {
+          if (unavailable) {
+            tone = 'unknown'; label = '健康状态暂不可用'; detail = '无法读取调度或发送记录，请稍后重试。';
+          } else if (sched.length === 0 && notes.length === 0) {
             tone = 'unknown'; label = '尚无检查记录';
           } else if (lastDue && lastDue.status === 'error') {
             tone = 'danger'; label = '调度异常';

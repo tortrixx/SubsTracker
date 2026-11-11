@@ -41,6 +41,7 @@
     .test-result.is-ok { color: var(--tone-ok-text); }
     .test-result.is-error { color: var(--tone-danger-text); }
     .card-clickable { cursor: pointer; }
+    #chDrawer[hidden] { display: none; }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -91,7 +92,7 @@
             <span style="flex:1"></span>
             <span class="st-caption" id="enabledCount"></span>
           </div>
-          <p class="st-caption" style="margin-top:8px">发送失败的提醒会在下一次整点检查时自动重试（系统内置行为，无需设置）。</p>
+          <p class="st-caption" style="margin-top:8px">发送失败的渠道会在规则再次命中且处于发送时段时重试；若当天只有一次发送时段，则不会自动补发。</p>
         </section>
 
         <section class="st-channel-grid" id="channelGrid" aria-label="渠道列表"></section>
@@ -101,13 +102,13 @@
 
   <!-- per-渠道抽屉（全页共用一个，按渠道动态填充） -->
   <div class="st-drawer-overlay" id="chDrawerOverlay"></div>
-  <aside class="st-drawer" id="chDrawer" role="dialog" aria-modal="true" aria-labelledby="chDrawerTitle" aria-hidden="true">
+  <aside class="st-drawer" id="chDrawer" role="dialog" aria-modal="true" aria-labelledby="chDrawerTitle" tabindex="-1" hidden>
     <div class="st-drawer-head">
       <span class="st-channel-icon" id="chDrawerIcon"><i class="fas fa-paper-plane"></i></span>
       <span class="st-drawer-title" id="chDrawerTitle">渠道配置</span>
       <span class="st-dirty-dot" id="chDrawerDirty" style="display:none" title="有未保存的更改"></span>
       <label class="st-switch" title="启用 / 停用该渠道">
-        <input type="checkbox" id="chDrawerSwitch">
+        <input type="checkbox" id="chDrawerSwitch" aria-label="启用此渠道">
         <span class="st-switch-track"></span><span class="st-switch-thumb"></span>
       </label>
       <button type="button" class="st-icon-btn" id="chDrawerClose" aria-label="关闭"><i class="fas fa-times"></i></button>
@@ -119,7 +120,7 @@
       <div id="chDrawerFields" style="margin-top:4px"></div>
       <div class="ch-test-zone">
         <p class="st-caption">使用当前填写值测试，将发出一条真实消息（无需先保存）。测试结果会记入活动页。</p>
-        <p class="test-result" id="chTestResult"></p>
+        <p class="test-result" id="chTestResult" role="status" aria-live="polite"></p>
       </div>
     </div>
     <div class="st-drawer-foot">
@@ -146,7 +147,13 @@
     }
     /* 一域一存：先拉最新配置作基线，合并本域 patch 后整表提交，
        避免覆盖其他页面刚保存的值（后端 POST /api/config 按字段重建，必须整表带齐）。 */
-    async function saveConfigPatch(patch, clearSecrets) {
+    var saveQueue = Promise.resolve();
+    function saveConfigPatch(patch, clearSecrets) {
+      var task = saveQueue.then(function() { return performConfigPatch(patch, clearSecrets); });
+      saveQueue = task.catch(function() {});
+      return task;
+    }
+    async function performConfigPatch(patch, clearSecrets) {
       const base = await fetchConfig();
       const body = {};
       Object.keys(base).forEach(function(k) { if (!/_CONFIGURED$/.test(k)) body[k] = base[k]; });
@@ -315,7 +322,7 @@
           '<span class="st-channel-name">' + ST.esc(def.label) + '</span>' +
           ST.badge(badge[0], badge[1]) +
           '<label class="st-switch" style="margin-left:auto" title="启用 / 停用">' +
-            '<input type="checkbox" data-switch="' + def.name + '"' + (st.enabled ? ' checked' : '') + '>' +
+            '<input type="checkbox" data-switch="' + def.name + '" aria-label="启用 ' + ST.esc(def.label) + ' 通知"' + (st.enabled ? ' checked' : '') + '>' +
             '<span class="st-switch-track"></span><span class="st-switch-thumb"></span>' +
           '</label></div>';
         if (st.state === 'incomplete') {
@@ -332,7 +339,10 @@
       }).join('');
 
       grid.querySelectorAll('[data-open]').forEach(function(el) {
-        el.addEventListener('click', function() { openDrawer(el.getAttribute('data-open')); });
+        el.addEventListener('click', function(event) {
+          if (event.target.closest('label.st-switch')) return;
+          openDrawer(el.getAttribute('data-open'));
+        });
       });
       grid.querySelectorAll('[data-switch]').forEach(function(input) {
         input.addEventListener('change', function() { toggleChannel(input); });
@@ -359,17 +369,19 @@
       var has = list.indexOf(name) >= 0;
       if (want && !has) list.push(name);
       if (!want && has) list = list.filter(function(x) { return x !== name; });
-      input.disabled = true;
+      document.querySelectorAll('[data-switch]').forEach(function(el) { el.disabled = true; });
       try {
         await saveConfigPatch({ ENABLED_NOTIFIERS: list });
         ST.toast((want ? '已启用 ' : '已停用 ') + ST.channelLabel(name));
         renderCards();
+        var restored = document.querySelector('[data-switch="' + name + '"]');
+        if (restored) restored.focus();
         refreshHealth();
       } catch (e) {
         input.checked = !want;
         ST.toast('开关保存失败：' + e.message, { tone: 'error' });
       } finally {
-        input.disabled = false;
+        document.querySelectorAll('[data-switch]').forEach(function(el) { el.disabled = false; });
       }
     }
 
@@ -396,6 +408,7 @@
 
     /* ---------- 发送时段 HourPicker ---------- */
     var hoursInvalidTokens = [];
+    var hoursSaving = false;
     function parseHours(tokens) {
       var set = {}, all = false, invalid = [];
       (tokens || []).forEach(function(tok) {
@@ -423,7 +436,7 @@
       var html = '';
       for (var h = 0; h < 24; h++) {
         var on = st.all || st.set[h];
-        html += '<button type="button" class="st-hour' + (on ? ' is-on' : '') + '" data-hour="' + h + '">' + String(h).padStart(2, '0') + '</button>';
+        html += '<button type="button" class="st-hour' + (on ? ' is-on' : '') + '" data-hour="' + h + '" aria-label="' + String(h).padStart(2, '0') + ' 点" aria-pressed="' + !!on + '"' + (hoursSaving ? ' disabled' : '') + '>' + String(h).padStart(2, '0') + '</button>';
       }
       picker.innerHTML = html;
       picker.querySelectorAll('[data-hour]').forEach(function(btn) {
@@ -469,6 +482,11 @@
       var mode = st.all ? 'all' : (arc ? 'range' : 'custom');
       document.getElementById('segHoursAll').classList.toggle('is-active', mode === 'all');
       document.getElementById('segHoursRange').classList.toggle('is-active', mode !== 'all');
+      document.getElementById('segHoursAll').setAttribute('aria-pressed', mode === 'all' ? 'true' : 'false');
+      document.getElementById('segHoursRange').setAttribute('aria-pressed', mode !== 'all' ? 'true' : 'false');
+      ['segHoursAll', 'segHoursRange', 'hourStartSel', 'hourEndSel'].forEach(function(id) {
+        document.getElementById(id).disabled = hoursSaving;
+      });
       document.getElementById('hoursRangeRow').style.display = mode === 'range' ? 'flex' : 'none';
       if (arc) {
         document.getElementById('hourStartSel').value = String(arc.start);
@@ -488,6 +506,7 @@
       return tokens;
     }
     function applyHoursTokens(tokens) {
+      if (hoursSaving) return;
       var full = tokens.concat(hoursInvalidTokens);
       var cfg = ST.config || (ST.config = {});
       cfg.NOTIFICATION_HOURS = full;
@@ -518,18 +537,25 @@
       nowEl.textContent = '现在 ' + hh + ':' + mm + '（' + tz + '）· ' + (inWindow ? '在发送时段内' : '不在发送时段内，将正常跳过');
       document.getElementById('policyTz').textContent = '时区 ' + tz;
     }
-    async function saveHours(tokens) {
+    async function saveHours(tokens, focusHour) {
       var errEl = document.getElementById('hoursError');
       errEl.style.display = 'none';
+      hoursSaving = true;
+      renderHours();
       try {
         await saveConfigPatch({ NOTIFICATION_HOURS: tokens });
-        renderHours();
       } catch (e) {
         /* 本地 ST.config 可能已被点击处理预写了未落库的值，强制重拉真值再重渲 */
-        await ST.loadConfig(true).catch(function() {});
-        errEl.textContent = '发送时段保存失败：' + e.message + '（已恢复为已保存的值）';
+        var reloaded = await ST.loadConfig(true).then(function() { return true; }).catch(function() { return false; });
+        errEl.textContent = '发送时段保存失败：' + e.message + (reloaded ? '（已恢复为已保存的值）' : '（无法重新读取，请刷新页面确认）');
         errEl.style.display = 'block';
+      } finally {
+        hoursSaving = false;
         renderHours();
+        if (focusHour !== undefined) {
+          var hourButton = document.querySelector('[data-hour="' + focusHour + '"]');
+          if (hourButton) hourButton.focus();
+        }
       }
     }
     function tokensFromState(st) {
@@ -539,6 +565,7 @@
         .concat(hoursInvalidTokens);
     }
     function onHourClick(h) {
+      if (hoursSaving) return;
       var st = currentHourState();
       if (st.all) {
         st.all = false;
@@ -555,9 +582,10 @@
       var cfg = ST.config || (ST.config = {});
       cfg.NOTIFICATION_HOURS = tokensFromState(st);
       renderHours();
-      saveHours(tokensFromState(st));
+      saveHours(tokensFromState(st), h);
     }
     function clearInvalidHours() {
+      if (hoursSaving) return;
       var st = currentHourState();
       hoursInvalidTokens = [];
       var cfg = ST.config || (ST.config = {});
@@ -580,7 +608,7 @@
 
     /* ---------- per-渠道抽屉 ---------- */
     var drawer = {
-      name: null, clearSecrets: new Set(), snapshot: '', lastFocus: null, saving: false
+      name: null, clearSecrets: new Set(), snapshot: '', lastFocus: null, saving: false, generation: 0
     };
     var drawerEls = {};
     function fieldInputEl(key) { return document.querySelector('[data-field="' + key + '"]'); }
@@ -592,7 +620,7 @@
         var html = '<div class="st-field" data-fieldwrap="' + f.key + '">';
         if (f.type === 'switch') {
           html += '<span class="st-field-label">' + ST.esc(f.label) + '</span>' +
-            '<label class="st-switch"><input type="checkbox" data-field="' + f.key + '"' + (cfg[f.key] === 'true' ? ' checked' : '') + '>' +
+            '<label class="st-switch"><input type="checkbox" data-field="' + f.key + '" aria-label="' + ST.esc(f.label) + '"' + (cfg[f.key] === 'true' ? ' checked' : '') + '>' +
             '<span class="st-switch-track"></span><span class="st-switch-thumb"></span></label>' +
             (f.switchLabel ? '<span class="st-caption">' + ST.esc(f.switchLabel) + '</span>' : '');
         } else {
@@ -698,6 +726,7 @@
       var def = null;
       ST.CHANNELS.forEach(function(d) { if (d.name === name) def = d; });
       if (!def) return;
+      drawer.generation++;
       drawer.name = name;
       drawer.clearSecrets = new Set();
       drawer.lastFocus = document.activeElement;
@@ -716,20 +745,23 @@
       markDrawerDirty();
       document.getElementById('chDrawerOverlay').classList.add('is-open');
       var d = document.getElementById('chDrawer');
+      d.hidden = false;
       d.classList.add('is-open');
-      d.setAttribute('aria-hidden', 'false');
       var first = d.querySelector('[data-field]');
       if (first) first.focus();
     }
     function closeDrawer(force) {
       if (!drawer.name) return;
+      if (drawer.saving) return;
       var doClose = function() {
         document.getElementById('chDrawerOverlay').classList.remove('is-open');
         var d = document.getElementById('chDrawer');
         d.classList.remove('is-open');
-        d.setAttribute('aria-hidden', 'true');
+        d.hidden = true;
+        var name = drawer.name;
         drawer.name = null;
-        if (drawer.lastFocus && drawer.lastFocus.focus) drawer.lastFocus.focus();
+        var focusTarget = drawer.lastFocus && drawer.lastFocus.isConnected ? drawer.lastFocus : document.querySelector('button[data-open="' + name + '"]');
+        if (focusTarget && focusTarget.focus) focusTarget.focus();
       };
       if (!force && drawerDirtyFn()) {
         ST.confirmDanger({ title: '有未保存的更改', body: '该渠道的配置尚未保存，关闭将丢失这些修改。', confirmText: '放弃并关闭' })
@@ -765,8 +797,10 @@
       if (!values.__enabled && has) list = list.filter(function(x) { return x !== name; });
       patch.ENABLED_NOTIFIERS = list;
       var saveBtn = document.getElementById('chSaveBtn');
-      var saveTestBtn = document.getElementById('chSaveTestBtn');
-      saveBtn.disabled = true; saveTestBtn.disabled = true;
+      // 保存期间锁定表单，防止请求返回时重建字段覆盖刚输入的新内容。
+      document.querySelectorAll('#chDrawer button, #chDrawer input, #chDrawer select, #chDrawer textarea')
+        .forEach(function(el) { el.disabled = true; });
+      document.getElementById('chDrawer').focus();
       try {
         await saveConfigPatch(patch, clearList);
         drawer.clearSecrets = new Set();
@@ -785,13 +819,19 @@
         } else {
           ST.toast(ST.channelLabel(name) + ' 配置已保存');
         }
-        if (thenTest) await runDrawerTest();
+        if (thenTest) {
+          // 测试依赖启用的按钮，表单数据此时已经保存。
+          document.getElementById('chTestBtn').disabled = false;
+          await runDrawerTest();
+        }
       } catch (e) {
         errEl.textContent = '保存失败：' + e.message + '。修改仍保留在抽屉中，可重试或关闭时放弃。';
         errEl.style.display = '';
       } finally {
         drawer.saving = false;
-        saveBtn.disabled = false; saveTestBtn.disabled = false;
+        document.querySelectorAll('#chDrawer button, #chDrawer input, #chDrawer select, #chDrawer textarea')
+          .forEach(function(el) { el.disabled = false; });
+        if (drawer.name && (document.activeElement === document.getElementById('chDrawer') || !document.getElementById('chDrawer').contains(document.activeElement))) saveBtn.focus();
       }
     }
     function buildTestPayload(name) {
@@ -815,8 +855,22 @@
     async function runDrawerTest() {
       var name = drawer.name;
       if (!name) return;
+      var generation = drawer.generation;
       var btn = document.getElementById('chTestBtn');
       var tr = document.getElementById('chTestResult');
+      // 测试接口把空值视为沿用已保存值。先保存显式清空的字段，避免误用旧地址或密钥。
+      var clearedValue = FIELD_DEFS[name].some(function(f) {
+        if (f.secret) return drawer.clearSecrets.has(f.key);
+        if (f.type === 'switch') return false;
+        var el = fieldInputEl(f.key);
+        return el && !el.value.trim() && String((ST.config || {})[f.key] || '').trim();
+      });
+      if (clearedValue) {
+        tr.style.display = '';
+        tr.className = 'test-result is-error';
+        tr.textContent = '有字段已清空：请先保存，再发送测试，以免使用之前保存的配置。';
+        return;
+      }
       var gotifyWrap = document.querySelector('[data-fieldwrap="GOTIFY_SERVER_URL"]');
       if (gotifyWrap) gotifyWrap.classList.remove('is-error');
       if (name === 'gotify' && !fieldInputEl('GOTIFY_SERVER_URL').value.trim()) {
@@ -828,6 +882,7 @@
         return;
       }
       var r = await testChannel(name, btn, buildTestPayload(name));
+      if (drawer.name !== name || drawer.generation !== generation) return;
       tr.style.display = '';
       tr.className = 'test-result ' + (r.ok ? 'is-ok' : 'is-error');
       tr.textContent = (r.ok ? '测试成功' : '测试失败') + ' · ' + ST.fmtTimeInTz(new Date().toISOString()) +
@@ -851,8 +906,9 @@
       var focusables = Array.from(document.getElementById('chDrawer')
         .querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select, textarea'))
         .filter(function(el) { return el.offsetParent !== null; });
-      if (!focusables.length) return;
+      if (!focusables.length) { e.preventDefault(); return; }
       var first = focusables[0], last = focusables[focusables.length - 1];
+      if (document.activeElement === document.getElementById('chDrawer')) { e.preventDefault(); (e.shiftKey ? last : first).focus(); return; }
       if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     });

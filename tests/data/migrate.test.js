@@ -121,9 +121,12 @@ describe('migrate.migrateSubscriptions', () => {
     expect(await env.SUBSCRIPTIONS_KV.get('subscriptions_v2_backup')).toBeNull();
   });
 
-  it('旧 subscriptions 是损坏 JSON → 按空处理不抛异常', async () => {
-    await env.SUBSCRIPTIONS_KV.put('subscriptions', '{ this is not valid json');
-    await migrateSubscriptions(env);
+  it('旧 subscriptions 是损坏 JSON → 停止迁移并保留原数据', async () => {
+    const old = '{ this is not valid json';
+    await env.SUBSCRIPTIONS_KV.put('subscriptions', old);
+    await expect(migrateSubscriptions(env)).rejects.toThrow('旧订阅数据无效');
+    expect(await env.SUBSCRIPTIONS_KV.get('subscriptions')).toBe(old);
+    expect(await env.SUBSCRIPTIONS_KV.get('subscriptions_v2_backup')).toBeNull();
     expect(await subRepo.listIds(env)).toEqual([]);
   });
 });

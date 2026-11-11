@@ -46,13 +46,13 @@ beforeEach(async () => {
   await clearKv();
   vi.stubGlobal(
     'fetch',
-    async () =>
+    vi.fn(async () =>
       /** @type {any} */ ({
         ok: true,
         status: 200,
         json: async () => ({ ok: true }),
         text: async () => 'ok'
-      })
+      }))
   );
 });
 
@@ -62,6 +62,47 @@ afterEach(() => {
 });
 
 describe('订阅生命周期 e2e', () => {
+  it('同一毫秒创建多条订阅并续期时不会覆盖记录', async () => {
+    const cookie = await loginCookie();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-01T08:00:00Z'));
+    const create = (name) => app.request('/api/subscriptions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ name, expiryDate: '2026-06-08', periodValue: 1, periodUnit: 'month', amount: 10 })
+    }, env);
+    const first = (await (await create('第一条')).json()).subscription;
+    const second = (await (await create('第二条')).json()).subscription;
+    expect(first.id).not.toBe(second.id);
+    expect((await subRepo.listAll(env)).map((sub) => sub.name).sort()).toEqual(['第一条', '第二条']);
+    const renewed = await app.request(`/api/subscriptions/${first.id}/renew`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: '{}'
+    }, env);
+    const payments = (await renewed.json()).subscription.paymentHistory;
+    expect(payments).toHaveLength(2);
+    expect(payments[0].id).not.toBe(payments[1].id);
+  });
+
+  it('新建时明确清空提醒规则，调度不会重新套用默认规则', async () => {
+    const cookie = await loginCookie();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-01T08:00:00Z'));
+    const response = await app.request('/api/subscriptions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ name: '无需提醒', expiryDate: '2026-06-08', autoRenew: false,
+        periodValue: 1, periodUnit: 'month', reminderRules: [] })
+    }, env);
+    expect(response.status).toBe(201);
+    const id = (await response.json()).subscription.id;
+    expect(await remindersRepo.getStoredRules(env, id)).toEqual([]);
+    const listResponse = await app.request('/api/subscriptions', { headers: { Cookie: cookie } }, env);
+    const listed = await listResponse.json();
+    expect(listed.find((sub) => sub.id === id).reminderRules).toEqual([]);
+    const result = await checkExpiringSubscriptions(env);
+    expect(result.matchedCount).toBe(0);
+    expect(result.sentCount).toBe(0);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
   it('创建→规则→到期前触发→日志→续订→删除清理', async () => {
     const cookie = await loginCookie();
 
@@ -107,12 +148,24 @@ describe('订阅生命周期 e2e', () => {
     const sched = await checkExpiringSubscriptions(env);
     expect(sched).toBeTruthy();
     expect(sched.matchedCount).toBeGreaterThanOrEqual(1);
-    expect(sched.sentCount).toBeGreaterThanOrEqual(0);
+    expect(sched.sentCount).toBe(1);
+    expect(sched.status).toBe('ok');
 
     // 4) 通知日志（若渠道成功）
     const logs = await queryNotifyLogs(env, { subId: id, limit: 20 });
-    // webhook mock 成功时应有日志；至少调度不应 error
-    expect(['ok', 'skipped', 'error']).toContain(sched.status);
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ subId: id, channel: 'webhook', status: 'success' });
+
+    // 手动测试应展示与正式调度相同的订阅正文，而不是另一套旧模板。
+    const manual = await app.request(`/api/subscriptions/${id}/test-notify`,
+      { method: 'POST', headers: { Cookie: cookie } }, env);
+    expect((await manual.json()).success).toBe(true);
+    const calls = vi.mocked(fetch).mock.calls;
+    const scheduledBody = JSON.parse(String(calls[0][1].body));
+    const manualBody = JSON.parse(String(calls[1][1].body));
+    expect(manualBody.content).toBe(scheduledBody.content);
+    expect(manualBody.content).toContain('到期状态: 7 天后到期');
+    expect(manualBody.content).not.toContain('类型:');
 
     // 5) 续订
     const renewRes = await app.request(
@@ -141,6 +194,5 @@ describe('订阅生命周期 e2e', () => {
     expect(await subRepo.getById(env, id)).toBeNull();
     expect(await remindersRepo.listForSubscription(env, id)).toEqual([]);
 
-    void logs;
   });
 });
