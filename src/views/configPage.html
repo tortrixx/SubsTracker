@@ -431,11 +431,6 @@
       { value: 'days', label: '天' },
       { value: 'hours', label: '小时' }
     ];
-    var DEF_REPEAT_UNTIL = [
-      { value: 'renewed', label: '续费后停止' },
-      { value: 'acknowledged', label: '手动确认后停止' },
-      { value: 'never', label: '不停止' }
-    ];
     function newRuleId() {
       if (window.crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
       return 'rule-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
@@ -500,10 +495,7 @@
       if (isAfter) {
         html += '<span class="st-caption">每</span>' +
           '<input type="number" class="r-repeat" aria-label="重复间隔（小时）" value="' + ST.esc(String(rule.repeatInterval == null ? 24 : rule.repeatInterval)) + '" min="1" step="1">' +
-          '<span class="st-caption">小时，直到</span>' +
-          '<select class="r-until" aria-label="重复停止条件">' +
-            DEF_REPEAT_UNTIL.map(function(u) { return '<option value="' + u.value + '"' + (rule.repeatUntil === u.value ? ' selected' : '') + '>' + u.label + '</option>'; }).join('') +
-          '</select>';
+          '<span class="st-caption">小时提醒一次，续期后停止</span>';
       }
       html += '<button type="button" class="st-icon-btn r-del" data-dract="del" aria-label="删除规则"><i class="fas fa-trash"></i></button>' +
         '<div class="rule-err">' + ST.esc(errMsg || '') + '</div>' +
@@ -561,7 +553,7 @@
           value: valueEl ? valueEl.value : prev.value,
           unit: row.querySelector('.r-unit').value,
           repeatInterval: type === 'after_expiry' ? (riEl ? riEl.value : 24) : null,
-          repeatUntil: type === 'after_expiry' ? (untilEl ? untilEl.value : 'renewed') : (prev.repeatUntil || 'renewed'),
+          repeatUntil: untilEl ? untilEl.value : (prev.repeatUntil || 'renewed'),
           isEnabled: row.querySelector('.r-enabled').checked,
           createdAt: prev.createdAt || new Date().toISOString()
         });

@@ -29,9 +29,13 @@ const app = new Hono<{ Bindings: AppEnv }>();
 // ─────────────────────────────────────────────────────────────
 app.use('*', async (c, next) => {
   try {
-    await ensureMigrations(c.env);
+    const result = await ensureMigrations(c.env);
+    if (result.reason === 'locked_elsewhere') {
+      return c.json({ success: false, message: '数据迁移进行中，请稍后重试', code: 'migration_in_progress' }, 503);
+    }
   } catch (err) {
-    console.error('[app] 迁移失败，回退继续处理请求:', err);
+    console.error('[app] 迁移失败，拒绝业务请求:', err);
+    return c.json({ success: false, message: '数据迁移失败，请检查服务日志', code: 'migration_failed' }, 503);
   }
   await next();
 });

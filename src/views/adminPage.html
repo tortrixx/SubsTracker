@@ -54,6 +54,7 @@
     .tap { min-height: 44px; }
     .st-menu-item { min-height: 44px; }
     .menu-panel { min-width: 260px; }
+    #rowMenu { max-height: calc(100vh - 16px); overflow-y: auto; }
     .menu-panel .st-field { margin-bottom: var(--sp-3); }
     .menu-panel .st-field:last-child { margin-bottom: 0; }
     .lunar-label { display: flex; align-items: center; gap: var(--sp-2); min-height: 44px; cursor: pointer; font-size: var(--fs-sm); font-weight: 500; color: var(--text-main); }
@@ -100,6 +101,19 @@
     .foot-note { margin-top: var(--sp-5); text-align: center; }
     .st-drawer-foot .spacer { flex: 1; }
     .preview-box { border: 1px solid var(--hairline); border-radius: var(--radius-m); background: var(--surface-tint); padding: var(--sp-3); font-size: var(--fs-sm); line-height: 1.6; color: var(--text-main); }
+    /* 订阅表单是主要工作区：桌面居中展开，移动端占满屏幕。 */
+    #subDrawer { inset: 50% auto auto 50%; width: min(820px, calc(100vw - 40px)); height: min(90dvh, 900px); border-radius: var(--radius-l); overflow: hidden; transform: translate(-50%, -47%); opacity: 0; transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease); }
+    #subDrawer.is-open { transform: translate(-50%, -50%); opacity: 1; }
+    #subDrawer .st-drawer-body { padding: var(--sp-4) clamp(16px, 4vw, 32px); }
+    .form-intro { margin: 0 0 var(--sp-4); color: var(--text-muted); font-size: var(--fs-sm); line-height: 1.6; }
+    .advanced-fields { margin-top: var(--sp-3); }
+    .advanced-fields > summary { cursor: pointer; color: var(--text-muted); font-size: var(--fs-sm); font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+    .advanced-fields > summary::after { content: '展开'; margin-left: auto; font-weight: 400; }
+    .advanced-fields[open] > summary::after { content: '收起'; }
+    @media (max-width: 600px) {
+      #subDrawer { inset: 0; width: 100%; height: 100dvh; border-radius: 0; transform: translateY(3%); }
+      #subDrawer.is-open { transform: none; }
+    }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -186,45 +200,48 @@
     </div>
     <div class="st-drawer-body">
       <div id="drawerAlert" style="margin-bottom: var(--sp-3);"></div>
+      <p class="form-intro">填写名称和到期日即可开始；其他设置可按需要调整。</p>
       <form id="subscriptionForm" novalidate>
         <details class="pgroup" open>
           <summary>基本信息<i class="fas fa-chevron-down chev"></i></summary>
           <div class="pgroup-body">
-            <div class="st-field" data-field="name">
+            <div class="two-col"><div class="st-field" data-field="name">
               <label class="st-field-label" for="name">订阅名称 *</label>
               <input type="text" id="name" class="st-input" autocomplete="off" placeholder="例如：Netflix">
               <p class="st-field-error"></p>
             </div>
-            <div class="two-col">
-              <div class="st-field" data-field="customType">
-                <label class="st-field-label" for="customType">类型</label>
-                <input type="text" id="customType" class="st-input" list="typeSuggestions" autocomplete="off" placeholder="选择或输入，如：影音">
-                <datalist id="typeSuggestions"></datalist>
-                <p class="st-field-hint">填「试用」即标记为试用订阅：列表主状态显示「试用中」，倒计时指向试用结束日（到期日）。</p>
-              </div>
-              <div class="st-field" data-field="category">
-                <label class="st-field-label" for="category">分类标签</label>
-                <input type="text" id="category" class="st-input" list="categorySuggestions" autocomplete="off" placeholder="选择或输入">
-                <datalist id="categorySuggestions"></datalist>
-                <p class="st-field-hint">多个标签用 / 分隔，如：云服务 / 开发。</p>
-              </div>
+            <div class="st-field" data-field="category">
+              <label class="st-field-label" for="category">分类（可选）</label>
+              <input type="text" id="category" class="st-input" list="categorySuggestions" autocomplete="off" placeholder="例如：影音、云服务">
+              <datalist id="categorySuggestions"></datalist>
+              <p class="st-field-hint">方便之后筛选；多个分类可用 / 分隔。</p>
             </div>
+            </div>
+            <details class="advanced-fields"><summary>更多信息与状态</summary>
+              <div class="st-field" data-field="customType">
+                <label class="st-field-label" for="customType">类型（可选）</label>
+                <input type="text" id="customType" class="st-input" list="typeSuggestions" autocomplete="off" placeholder="例如：视频会员">
+                <datalist id="typeSuggestions"></datalist>
+                <p class="st-field-hint">用于更细的统计；选择「7 天试用」时会自动标记为试用。</p>
+              </div>
             <label class="switch-line" for="isActive">
               <span class="st-switch"><input type="checkbox" id="isActive" checked><span class="st-switch-track"></span><span class="st-switch-thumb"></span></span>
-              <span><span class="lbl">启用订阅</span><br><span class="desc">停用后不再提醒，也不计入概览统计与即将到期计数。</span></span>
+              <span><span class="lbl">启用订阅</span><br><span class="desc">关闭后保留记录，但不再提醒或计入概览。</span></span>
             </label>
+            </details>
           </div>
         </details>
 
         <details class="pgroup" id="groupPeriod">
-          <summary>周期与提醒<i class="fas fa-chevron-down chev"></i></summary>
+          <summary>到期与提醒<i class="fas fa-chevron-down chev"></i></summary>
           <div class="pgroup-body">
             <div class="preset-row" role="group" aria-label="周期预设">
-              <button type="button" class="st-btn st-btn--ghost st-btn--sm" data-preset="monthly">月卡</button>
-              <button type="button" class="st-btn st-btn--ghost st-btn--sm" data-preset="quarterly">季卡</button>
-              <button type="button" class="st-btn st-btn--ghost st-btn--sm" data-preset="yearly">年卡</button>
-              <button type="button" class="st-btn st-btn--ghost st-btn--sm" data-preset="trial">试用（7 天）</button>
+              <button type="button" class="st-btn st-btn--ghost st-btn--sm" data-preset="monthly">每月</button>
+              <button type="button" class="st-btn st-btn--ghost st-btn--sm" data-preset="quarterly">每季</button>
+              <button type="button" class="st-btn st-btn--ghost st-btn--sm" data-preset="yearly">每年</button>
+              <button type="button" class="st-btn st-btn--ghost st-btn--sm" data-preset="trial">7 天试用</button>
             </div>
+            <p class="st-field-hint">快捷选项会根据开始日期填写到期日，你也可以直接修改。</p>
             <div class="two-col">
               <div class="st-field" data-field="startDate">
                 <label class="st-field-label" for="startDate">开始日期</label>
@@ -234,7 +251,7 @@
               <div class="st-field" data-field="expiryDate">
                 <label class="st-field-label" for="expiryDate">到期日期 *</label>
                 <input type="date" id="expiryDate" class="st-input">
-                <p class="st-field-hint">试用订阅此处即试用结束日。</p>
+                <p class="st-field-hint">试用请填写试用结束日。</p>
                 <p class="st-field-error"></p>
               </div>
             </div>
@@ -254,17 +271,19 @@
                 <p class="st-field-error"></p>
               </div>
             </div>
-            <div class="st-field" data-field="subscriptionMode">
-              <label class="st-field-label" for="subscriptionMode">订阅模式</label>
-              <select id="subscriptionMode" class="st-input">
-                <option value="cycle">循环订阅（未过期续订从当前到期日接续）</option>
-                <option value="reset">到期重置（从支付日重新起算）</option>
-              </select>
-            </div>
             <label class="switch-line" for="autoRenew">
               <span class="st-switch"><input type="checkbox" id="autoRenew" checked><span class="st-switch-track"></span><span class="st-switch-thumb"></span></span>
-              <span><span class="lbl">自动续订</span><br><span class="desc">到期后由调度器按周期自动顺延并生成支付记录。</span></span>
+              <span><span class="lbl">自动更新到期日</span><br><span class="desc">到期后按周期更新日期并记一笔支付；不会替你实际付款。</span></span>
             </label>
+            <details class="advanced-fields"><summary>续期计算与日历选项</summary>
+            <div class="st-field" data-field="subscriptionMode">
+              <label class="st-field-label" for="subscriptionMode">续期如何计算</label>
+              <select id="subscriptionMode" class="st-input">
+                <option value="cycle">未到期接续；过期后从付款日开始</option>
+                <option value="reset">从付款日重新开始（适合充值）</option>
+              </select>
+              <p class="st-field-hint">例如 6 月 15 日到期，6 月 3 日续一个月：接续到 7 月 15 日；从付款日开始则到 7 月 3 日。若已过期，两种方式都从付款日算起。</p>
+            </div>
             <label class="switch-line" for="useLunar">
               <span class="st-switch"><input type="checkbox" id="useLunar"><span class="st-switch-track"></span><span class="st-switch-thumb"></span></span>
               <span><span class="lbl">农历周期</span><br><span class="desc">按农历周期推算到期日（1900–2100 年）。</span></span>
@@ -273,8 +292,11 @@
               <span class="st-switch"><input type="checkbox" id="endOfMonth"><span class="st-switch-track"></span><span class="st-switch-thumb"></span></span>
               <span><span class="lbl">每月最后一天</span><br><span class="desc">仅公历：续订/推算时落到目标月最后一天。</span></span>
             </label>
+            </details>
 
             <div class="st-menu-sep" style="margin: var(--sp-3) 0;"></div>
+            <details class="advanced-fields" id="rulesEditor">
+            <summary><span>提醒时间：<span id="rulesSummary">正在加载</span></span></summary>
             <div class="rules-head">
               <span class="st-field-label" style="font-size: var(--fs-base);">提醒规则</span>
               <span class="st-badge st-info" id="rulesModeBadge">使用默认规则</span>
@@ -283,7 +305,8 @@
               <button type="button" class="st-btn st-btn--ghost st-btn--sm" id="reminderRulesAddBtn"><i class="fas fa-plus"></i>添加规则</button>
             </div>
             <div id="reminderRulesContainer"></div>
-            <p class="st-field-hint" style="margin-top: var(--sp-2);">触发语义（精确匹配）：「到期前 N 天」仅在剩余天数正好等于 N 时发送一次；需要多个时点就添加多条规则。规则为空 = 不提醒（明确状态，不会套用任何默认）。</p>
+            <p class="st-field-hint" style="margin-top: var(--sp-2);">例如「提前 7 天」只在到期前第 7 天提醒一次。想在其他日期也收到提醒，请添加规则；没有规则则不会提醒。</p>
+            </details>
           </div>
         </details>
 
@@ -348,11 +371,13 @@
         <div class="st-field" data-field="renewAmount">
           <label class="st-field-label" for="renewAmount">金额</label>
           <input type="number" id="renewAmount" class="st-input" step="0.01" min="0">
+          <p class="st-field-hint">留空时沿用原金额；原金额未设置时记录为 0。</p>
           <p class="st-field-error"></p>
         </div>
         <div class="st-field" data-field="renewPeriodMultiplier">
-          <label class="st-field-label" for="renewPeriodMultiplier">周期倍数</label>
+          <label class="st-field-label" for="renewPeriodMultiplier">续期几个周期</label>
           <input type="number" id="renewPeriodMultiplier" class="st-input" step="1" min="1" value="1">
+          <p class="st-field-hint">例如订阅周期为 1 个月，填 3 就续 3 个月。</p>
           <p class="st-field-error"></p>
         </div>
       </div>
@@ -365,7 +390,7 @@
         <label class="st-field-label" for="renewNote">备注</label>
         <input type="text" id="renewNote" class="st-input" placeholder="手动续订">
       </div>
-      <div class="preview-box" id="renewPreviewBox">填写后将向服务端请求预览；新到期日只采用服务端计算结果，本页不做本地推算。</div>
+      <div class="preview-box" id="renewPreviewBox">填写后会显示新的到期日，确认前不会修改订阅。</div>
     </div>
     <div class="st-drawer-foot">
       <span class="spacer"></span>
@@ -726,7 +751,7 @@
           '</div>' +
           '<div class="st-row-actions">' +
             '<button type="button" class="st-btn st-btn--ghost tap" data-act="edit" data-id="' + ST.esc(sub.id) + '">编辑</button>' +
-            '<button type="button" class="st-icon-btn" data-act="menu" data-id="' + ST.esc(sub.id) + '" aria-label="更多操作" aria-haspopup="true"><i class="fas fa-ellipsis-v"></i></button>' +
+            '<button type="button" class="st-icon-btn" data-act="menu" data-id="' + ST.esc(sub.id) + '" aria-label="更多操作" aria-haspopup="true" aria-expanded="false"><i class="fas fa-ellipsis-v"></i></button>' +
             '<i class="fas fa-chevron-down chev"></i>' +
           '</div>' +
         '</div>';
@@ -756,7 +781,7 @@
           (sub.startDate ? ST.esc(ST.fmtDateInTz(sub.startDate)) + (lunarOn && lunarTextOf(sub.startDate) ? '（农历 ' + ST.esc(lunarTextOf(sub.startDate)) + '）' : '') : '—') + '</div></div>' +
         '<div class="kv-item"><div class="k">到期日期</div><div class="v">' + ST.esc(ST.fmtDateInTz(sub.expiryDate)) +
           (lunarOn && lunarTextOf(sub.expiryDate) ? '（农历 ' + ST.esc(lunarTextOf(sub.expiryDate)) + '）' : '') + '</div></div>' +
-        '<div class="kv-item"><div class="k">周期</div><div class="v">' + ST.esc(periodLabel(sub) || '—') + ' · ' + (sub.subscriptionMode === 'reset' ? '到期重置' : '循环订阅') + (sub.autoRenew === false ? ' · 不自动续订' : ' · 自动续订') + '</div></div>' +
+        '<div class="kv-item"><div class="k">周期</div><div class="v">' + ST.esc(periodLabel(sub) || '—') + ' · ' + (sub.subscriptionMode === 'reset' ? '从付款日重新开始' : '未到期接续，过期后从付款日开始') + (sub.autoRenew === false ? ' · 手动更新到期日' : ' · 自动更新到期日') + '</div></div>' +
         '<div class="kv-item"><div class="k">上次支付</div><div class="v">' + (sub.lastPaymentDate ? ST.esc(ST.fmtDateInTz(sub.lastPaymentDate)) : '—') + '</div></div>' +
         '<div class="kv-item"><div class="k">累计支出（全部记录）</div><div class="v">' + totalsHtml + '</div></div>';
       if (sub.website) {
@@ -791,7 +816,7 @@
       }
       if (!subs.length) {
         root.innerHTML = '<div class="st-empty st-empty--blank"><i class="fas fa-calendar-plus st-empty-icon"></i>' +
-          '<div class="st-empty-title">还没有订阅</div><div class="st-empty-desc">添加你的第一个订阅，到期前会自动收到提醒。</div>' +
+          '<div class="st-empty-title">还没有订阅</div><div class="st-empty-desc">添加订阅后，配置并测试通知渠道，即可在规则命中时收到提醒。</div>' +
           '<div class="st-empty-actions"><button type="button" class="st-btn st-btn--primary tap" data-act="add">添加第一个订阅</button></div></div>';
         return;
       }
@@ -841,15 +866,17 @@
     let menuAnchor = null;
     function closeRowMenu() {
       $('rowMenu').hidden = true;
+      if (menuAnchor) menuAnchor.setAttribute('aria-expanded', 'false');
       menuSubId = null; menuAnchor = null;
     }
     function openRowMenu(sub, anchor) {
+      closeRowMenu();
       const menu = $('rowMenu');
       menuSubId = sub.id; menuAnchor = anchor;
+      anchor.setAttribute('aria-expanded', 'true');
       const active = sub.isActive !== false;
       menu.innerHTML =
-        '<button type="button" class="st-menu-item" data-mact="renew1"><i class="fas fa-redo"></i>按原价续订一周期</button>' +
-        '<button type="button" class="st-menu-item" data-mact="renewCustom"><i class="fas fa-sliders-h"></i>续订（自定义）…</button>' +
+        '<button type="button" class="st-menu-item" data-mact="renewCustom"><i class="fas fa-redo"></i>续期…</button>' +
         '<button type="button" class="st-menu-item" data-mact="test"><i class="fas fa-paper-plane"></i>测试通知</button>' +
         '<button type="button" class="st-menu-item" data-mact="logs"><i class="fas fa-history"></i>通知记录</button>' +
         '<button type="button" class="st-menu-item" data-mact="payments"><i class="fas fa-receipt"></i>支付历史</button>' +
@@ -860,7 +887,7 @@
       menu.hidden = false;
       const r = anchor.getBoundingClientRect();
       menu.style.position = 'fixed';
-      menu.style.top = Math.min(r.bottom + 4, window.innerHeight - 380) + 'px';
+      menu.style.top = Math.max(8, Math.min(r.bottom + 4, window.innerHeight - menu.offsetHeight - 8)) + 'px';
       const mw = 220;
       menu.style.left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8)) + 'px';
       menu.style.width = mw + 'px';
@@ -892,12 +919,19 @@
       if (menuSubId && !$('rowMenu').contains(e.target) && e.target !== menuAnchor && !(menuAnchor && menuAnchor.contains(e.target))) closeRowMenu();
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') { closeRowMenu(); closeToolbarMenu(); }
+      if (e.key === 'Escape') {
+        const anchor = menuAnchor;
+        const toolbarWasOpen = toolbarMenuOpen;
+        closeRowMenu(); closeToolbarMenu();
+        if (anchor) anchor.focus();
+        else if (toolbarWasOpen) $('toolbarMenuBtn').focus();
+      }
     });
     window.addEventListener('resize', function () { closeRowMenu(); });
 
     /* ---------- 抽屉通用 ---------- */
     const drawerStack = [];
+    const drawerHideTimers = {};
     const DRAWER_IDS = {
       sub: ['subDrawer', 'subDrawerOverlay'],
       renew: ['renewDrawer', 'renewOverlay'],
@@ -905,6 +939,7 @@
     };
     function showDrawer(name) {
       const overlay = $(DRAWER_IDS[name][1]), drawer = $(DRAWER_IDS[name][0]);
+      if (drawerHideTimers[name]) clearTimeout(drawerHideTimers[name]);
       drawer.hidden = false;
       requestAnimationFrame(function () {
         requestAnimationFrame(function () { overlay.classList.add('is-open'); drawer.classList.add('is-open'); });
@@ -916,7 +951,7 @@
       const overlay = $(DRAWER_IDS[name][1]), drawer = $(DRAWER_IDS[name][0]);
       overlay.classList.remove('is-open');
       drawer.classList.remove('is-open');
-      setTimeout(function () { drawer.hidden = true; }, 300);
+      drawerHideTimers[name] = setTimeout(function () { drawer.hidden = true; delete drawerHideTimers[name]; }, 300);
       const idx = drawerStack.indexOf(name);
       if (idx >= 0) drawerStack.splice(idx, 1);
       if (!drawerStack.length) document.body.style.overflow = '';
@@ -962,6 +997,7 @@
        打开抽屉与克隆时先清空模型再异步灌入，保证零残留。 */
     const drawerCtx = { mode: 'create', subId: null, rulesSourceId: null, lastFocus: null, saving: false };
     let rulesState = { status: 'ready', model: [], dirty: false, usingDefault: false };
+    let rulesRequestId = 0;
     let rulesBaseline = [];
     let formSnapshot = '';
     /* 规则是否被用户改过：与「加载就绪时的基线模型」比对（保存前合并与徽章共用）；
@@ -1055,11 +1091,6 @@
       { value: 'days', label: '天' },
       { value: 'hours', label: '小时' }
     ];
-    const REPEAT_UNTIL = [
-      { value: 'renewed', label: '续费后停止' },
-      { value: 'acknowledged', label: '手动确认后停止' },
-      { value: 'never', label: '不停止' }
-    ];
     function ruleRowHtml(rule, idx, errMsg) {
       const isAfter = rule.type === 'after_expiry';
       const isOn = rule.type === 'on_expiry';
@@ -1075,10 +1106,7 @@
       if (isAfter) {
         html += '<span class="st-caption">每</span>' +
           '<input type="number" class="r-repeat" aria-label="重复间隔（小时）" value="' + ST.esc(String(rule.repeatInterval == null ? 24 : rule.repeatInterval)) + '" min="1" step="1">' +
-          '<span class="st-caption">小时，直到</span>' +
-          '<select class="r-until" aria-label="重复停止条件">' +
-            REPEAT_UNTIL.map(function (u) { return '<option value="' + u.value + '"' + (rule.repeatUntil === u.value ? ' selected' : '') + '>' + u.label + '</option>'; }).join('') +
-          '</select>';
+          '<span class="st-caption">小时提醒一次，续期后停止</span>';
       }
       html += '<button type="button" class="st-icon-btn r-del" data-ract="del" aria-label="删除规则"><i class="fas fa-trash"></i></button>' +
         '<div class="rule-err">' + ST.esc(errMsg || '') + '</div>' +
@@ -1101,8 +1129,13 @@
         box.innerHTML = rulesState.model.map(function (r, i) { return ruleRowHtml(r, i, errMap && errMap[i]); }).join('');
       }
       setRulesBadge();
+      updateRulesSummary();
       updateSaveEnabled();
       refreshDirtyDot();
+    }
+    function updateRulesSummary() {
+      const enabled = rulesState.model.filter(function (r) { return r.isEnabled !== false; });
+      $('rulesSummary').textContent = rulesState.status === 'loading' ? '正在加载' : rulesState.status === 'error' ? '加载失败' : enabled.length ? ST.rulesSummary(enabled) : '不提醒';
     }
     /* 从 DOM 行同步回内存模型（输入即同步，模型是唯一数据源） */
     function syncRulesFromDom() {
@@ -1122,7 +1155,7 @@
           value: valueEl ? valueEl.value : prev.value,
           unit: row.querySelector('.r-unit').value,
           repeatInterval: type === 'after_expiry' ? (riEl ? riEl.value : 24) : null,
-          repeatUntil: type === 'after_expiry' ? (untilEl ? untilEl.value : 'renewed') : (prev.repeatUntil || 'renewed'),
+          repeatUntil: untilEl ? untilEl.value : (prev.repeatUntil || 'renewed'),
           isEnabled: row.querySelector('.r-enabled').checked,
           createdAt: prev.createdAt || new Date().toISOString()
         });
@@ -1130,6 +1163,7 @@
       if (next.length) rulesState.model = next;
       rulesState.dirty = true;
       rulesState.usingDefault = false;
+      updateRulesSummary();
     }
     function validateRules() {
       // 返回 { idx: 错误文案 } 与首个错误行序号；只做字段级校验，绝不静默改值
@@ -1182,17 +1216,22 @@
 
     async function loadRulesFor(subId) {
       // 状态机入口：先清模型（零残留）→ 骨架禁存 → 拉取 → 就绪/失败禁存
+      const requestId = ++rulesRequestId;
       rulesState = { status: 'loading', model: [], dirty: false, usingDefault: false };
       renderRules();
       try {
         const data = await apiJson('/api/subscriptions/' + encodeURIComponent(subId) + '/reminders');
+        if (requestId !== rulesRequestId || drawerCtx.rulesSourceId !== subId || $('subDrawer').hidden) return;
         if (!data || !Array.isArray(data.rules)) throw new Error('规则数据异常');
         rulesState.model = data.rules.map(normalizeRuleClient);
         rulesBaseline = JSON.parse(JSON.stringify(rulesState.model));
         rulesState.status = 'ready';
         renderRules();
-        takeSnapshot();
+        // 加载期间用户可能已编辑名称等字段，不能把这些更改当成原始基线。
+        formSnapshot = fieldsSnapshot + '|' + JSON.stringify(rulesState.model) + '|' + rulesState.status;
+        refreshDirtyDot();
       } catch (e) {
+        if (requestId !== rulesRequestId || drawerCtx.rulesSourceId !== subId || $('subDrawer').hidden) return;
         rulesState.status = 'error';
         renderRules();
       }
@@ -1240,6 +1279,7 @@
     function clearDrawerAlert() { $('drawerAlert').innerHTML = ''; }
 
     function openSubDrawer(mode, sub) {
+      ++rulesRequestId;
       drawerCtx.mode = mode;
       drawerCtx.subId = (mode === 'edit' && sub) ? sub.id : null;
       drawerCtx.rulesSourceId = sub ? sub.id : null;
@@ -1247,7 +1287,9 @@
       closeRowMenu();
       clearDrawerAlert();
       clearFieldErrors($('subscriptionForm'));
-      $('groupPeriod').open = false;
+      $('groupPeriod').open = true;
+      $('rulesEditor').open = false;
+      document.querySelectorAll('#subscriptionForm details.advanced-fields:not(#rulesEditor)').forEach(function (d) { d.open = false; });
       $('groupPay').open = false;
       $('groupNotes').open = false;
       if (mode === 'create') {
@@ -1280,11 +1322,12 @@
       if (drawerIsDirty()) {
         const ok = await ST.confirmDanger({
           title: '放弃未保存的更改？',
-          body: '抽屉里有尚未保存的修改，关闭后将全部丢失。',
+          body: '尚未保存的修改会丢失。',
           confirmText: '放弃更改'
         });
         if (!ok) return;
       }
+      ++rulesRequestId;
       hideDrawer('sub');
       restoreFocus(drawerCtx.lastFocus);
     }
@@ -1373,6 +1416,7 @@
       if (rulesState.status !== 'ready') {
         showDrawerAlert('提醒规则尚未加载完成（或加载失败），为避免覆盖现有规则，暂不能保存。');
         $('groupPeriod').open = true;
+        $('rulesEditor').open = true;
         return;
       }
       syncRulesFromDom();
@@ -1383,6 +1427,7 @@
       if (errs.length) { focusField(errs[0].field); return; }
       if (rv.first >= 0) {
         $('groupPeriod').open = true;
+        $('rulesEditor').open = true;
         const row = $('reminderRulesContainer').querySelector('[data-rule-idx="' + rv.first + '"]');
         if (row) { const inp = row.querySelector('.r-value, .r-repeat'); if (inp) { inp.focus(); inp.scrollIntoView({ block: 'center', behavior: 'smooth' }); } }
         return;
@@ -1430,11 +1475,6 @@
           const created = result.subscription;
           created.reminderRules = payload.reminderRules;
           created.reminderRulesSummary = ST.rulesSummary(payload.reminderRules);
-          if (payload.reminderRules.length === 0) {
-            /* 新建接口在规则为空时默认套预设；用户明确清空（不提醒）时再整体替换为空，落实「规则为空」状态 */
-            try { await postJson('/api/subscriptions/' + encodeURIComponent(created.id) + '/reminders', { rules: [] }, 'PUT'); }
-            catch (e2) { ST.toast('订阅已创建，但清空默认规则失败，可在编辑中再删', { tone: 'warn' }); }
-          }
           subs.unshift(created);
           hideDrawer('sub');
           restoreFocus(drawerCtx.lastFocus);
@@ -1442,7 +1482,7 @@
           ST.toast('订阅已添加');
         }
       } catch (err) {
-        showDrawerAlert('保存失败：' + (err && err.message ? err.message : '请稍后重试') + '（修改已保留在抽屉中）');
+        showDrawerAlert('保存失败：' + (err && err.message ? err.message : '请稍后重试') + '（修改已保留）');
       } finally {
         drawerCtx.saving = false;
         updateSaveEnabled();
@@ -1498,18 +1538,7 @@
       });
       return updated;
     }
-    async function renewOneClick(sub) {
-      const snapshot = takeRenewSnapshot(sub);
-      try {
-        const pv = await postJson('/api/subscriptions/' + encodeURIComponent(sub.id) + '/renew/preview', {});
-        if (!pv || !pv.success || !pv.preview) throw new Error((pv && pv.message) || '无法获取续订预览');
-        await doRenew(sub, {}, snapshot);
-      } catch (e) {
-        ST.toast('续订失败：' + (e && e.message ? e.message : '请稍后重试'), { tone: 'error' });
-      }
-    }
-
-    const renewCtx = { sub: null, snapshot: null, previewKey: '', lastFocus: null };
+    const renewCtx = { sub: null, snapshot: null, previewKey: '', previewSeq: 0, lastFocus: null, saving: false };
     let renewPreviewTimer = null;
     function renewOptionsFromForm() {
       const amountRaw = $('renewAmount').value.trim();
@@ -1533,31 +1562,37 @@
       if (!renewCtx.sub) return;
       const box = $('renewPreviewBox');
       const confirmBtn = $('confirmRenewBtn');
+      const seq = ++renewCtx.previewSeq;
+      renewCtx.previewKey = '';
       const invalid = renewValidationError();
       if (invalid) {
-        box.textContent = invalid + '。修正后将向服务端请求预览；本页不做本地推算。';
+        box.textContent = invalid + '。修改后可查看新的到期日。';
         confirmBtn.disabled = true;
         return;
       }
       const options = renewOptionsFromForm();
       const key = JSON.stringify(options);
-      renewCtx.previewKey = key;
-      box.textContent = '正在向服务端请求预览…';
+      box.textContent = '正在计算新的到期日…';
       confirmBtn.disabled = true;
       try {
         const pv = await postJson('/api/subscriptions/' + encodeURIComponent(renewCtx.sub.id) + '/renew/preview', options);
-        if (renewCtx.previewKey !== key) return; // 输入已变，丢弃过期结果
+        if (renewCtx.previewSeq !== seq || renewCtx.saving) return;
         if (!pv || !pv.success || !pv.preview) throw new Error((pv && pv.message) || '预览失败');
         box.innerHTML = '新到期日：<strong>' + ST.esc(ST.fmtDateInTz(pv.preview.newExpiryDate)) + '</strong>（时区 ' + ST.esc(ST.tz()) + '）<br>' +
           '新周期开始：' + ST.esc(ST.fmtDateInTz(pv.preview.newStartDate)) + ' · 支付日：' + ST.esc(ST.fmtDateInTz(pv.preview.paymentDate));
+        renewCtx.previewKey = key;
         confirmBtn.disabled = false;
       } catch (e) {
-        if (renewCtx.previewKey !== key) return;
-        box.textContent = '预览失败：' + (e && e.message ? e.message : '请稍后重试') + '。未展示任何推算日期。';
+        if (renewCtx.previewSeq !== seq) return;
+        box.textContent = '暂时无法计算到期日：' + (e && e.message ? e.message : '请稍后重试') + '。';
         confirmBtn.disabled = true;
       }
     }
     function scheduleRenewPreview() {
+      renewCtx.previewSeq++;
+      renewCtx.previewKey = '';
+      $('confirmRenewBtn').disabled = true;
+      $('renewPreviewBox').textContent = '正在计算新的到期日…';
       if (renewPreviewTimer) clearTimeout(renewPreviewTimer);
       renewPreviewTimer = setTimeout(refreshRenewPreview, 350);
     }
@@ -1576,18 +1611,29 @@
       showDrawer('renew');
       refreshRenewPreview();
     }
-    function closeRenewDrawer() { hideDrawer('renew'); restoreFocus(renewCtx.lastFocus); }
+    function closeRenewDrawer() {
+      if (renewCtx.saving) return;
+      renewCtx.previewSeq++;
+      renewCtx.previewKey = '';
+      if (renewPreviewTimer) clearTimeout(renewPreviewTimer);
+      hideDrawer('renew'); restoreFocus(renewCtx.lastFocus);
+    }
     async function confirmRenew() {
-      if (!renewCtx.sub) return;
+      if (!renewCtx.sub || renewCtx.saving || renewValidationError() || renewCtx.previewKey !== JSON.stringify(renewOptionsFromForm())) return;
       const btn = $('confirmRenewBtn');
+      renewCtx.saving = true;
       btn.disabled = true;
+      ['renewAmount', 'renewPaymentDate', 'renewPeriodMultiplier', 'renewNote'].forEach(function (id) { $(id).disabled = true; });
       try {
         await doRenew(renewCtx.sub, renewOptionsFromForm(), renewCtx.snapshot);
         hideDrawer('renew');
         restoreFocus(renewCtx.lastFocus);
       } catch (e) {
         $('renewAlert').innerHTML = '<div class="st-alert st-alert--error"><i class="fas fa-exclamation-circle"></i><span>续订失败：' + ST.esc(e && e.message ? e.message : '请稍后重试') + '</span></div>';
-        btn.disabled = false;
+        btn.disabled = renewCtx.previewKey !== JSON.stringify(renewOptionsFromForm());
+      } finally {
+        renewCtx.saving = false;
+        ['renewAmount', 'renewPaymentDate', 'renewPeriodMultiplier', 'renewNote'].forEach(function (id) { $(id).disabled = false; });
       }
     }
 
@@ -1745,33 +1791,44 @@
     }
     async function restoreDeletedSub(snapshot, rulesSnap) {
       try {
-        const body = payloadFromSub(snapshot);
-        body.reminderRules = rulesSnap;
-        const res = await postJson('/api/subscriptions', body, 'POST');
-        if (!res || !res.success || !res.subscription) throw new Error((res && res.message) || '恢复失败');
-        const created = res.subscription;
-        created.reminderRules = rulesSnap;
-        created.reminderRulesSummary = ST.rulesSummary(rulesSnap);
-        subs.unshift(created);
+        const restored = Object.assign({}, snapshot);
+        delete restored.reminderRules;
+        delete restored.reminderRulesSummary;
+        const rules = Object.create(null);
+        rules[snapshot.id] = rulesSnap;
+        const res = await postJson('/api/restore', { mode: 'missing', backup: { subscriptions: [restored], reminderRules: rules } });
+        if (!res || !res.success) throw new Error((res && res.message) || '恢复失败');
+        restored.reminderRules = rulesSnap;
+        restored.reminderRulesSummary = ST.rulesSummary(rulesSnap);
+        subs.unshift(restored);
         renderList();
-        ST.toast('已撤销删除（注：原支付历史仅保留初始记录，无法完整恢复）', { tone: 'warn', duration: 6000 });
+        ST.toast('已撤销删除，支付记录与提醒规则已恢复');
       } catch (e) {
         ST.toast('撤销删除失败：' + (e && e.message ? e.message : '请稍后重试'), { tone: 'error' });
       }
     }
     async function deleteSub(sub) {
-      let rulesSnap = Array.isArray(sub.reminderRules) ? sub.reminderRules : [];
+      let rulesSnap;
+      let snapshot;
       try {
-        const data = await apiJson('/api/subscriptions/' + encodeURIComponent(sub.id) + '/reminders');
-        if (data && Array.isArray(data.rules)) rulesSnap = data.rules;
-      } catch (e) { /* 用列表自带规则兜底 */ }
+        const [latest, data] = await Promise.all([
+          apiJson('/api/subscriptions/' + encodeURIComponent(sub.id)),
+          apiJson('/api/subscriptions/' + encodeURIComponent(sub.id) + '/reminders')
+        ]);
+        if (!latest || latest.id !== sub.id) throw new Error('订阅不可用');
+        if (!data || !Array.isArray(data.rules)) throw new Error('提醒规则不可用');
+        snapshot = latest;
+        rulesSnap = data.rules;
+      } catch (e) {
+        ST.toast('无法读取最新订阅与提醒规则，暂不能删除；请稍后重试', { tone: 'error' });
+        return;
+      }
       const ok = await ST.confirmDanger({
         title: '删除订阅',
         body: '确定要删除「' + sub.name + '」吗？\n到期日：' + ST.fmtDateInTz(sub.expiryDate) + '。\n删除后 5 秒内可通过提示撤销。',
         confirmText: '删除'
       });
       if (!ok) return;
-      const snapshot = JSON.parse(JSON.stringify(sub));
       try {
         const res = await apiJson('/api/subscriptions/' + encodeURIComponent(sub.id), { method: 'DELETE' });
         if (res && res.success === false) throw new Error(res.message || '删除失败');
@@ -1790,8 +1847,7 @@
       const sub = findSub(menuSubId);
       closeRowMenu();
       if (!sub) return;
-      if (act === 'renew1') renewOneClick(sub);
-      else if (act === 'renewCustom') openRenewDrawer(sub);
+      if (act === 'renewCustom') openRenewDrawer(sub);
       else if (act === 'test') testNotify(sub);
       else if (act === 'logs') window.location.href = '/admin/notify-logs?sub=' + encodeURIComponent(sub.id);
       else if (act === 'payments') openPayments(sub);
@@ -1801,9 +1857,13 @@
     }
 
     /* ═══════════ 列表事件 ═══════════ */
-    function toggleExpand(id) {
+    function toggleExpand(id, restoreRowFocus) {
       if (expandedIds.has(id)) expandedIds.delete(id); else expandedIds.add(id);
       renderList();
+      if (restoreRowFocus) {
+        const row = Array.prototype.find.call($('listRoot').querySelectorAll('.st-row'), function (el) { return el.getAttribute('data-id') === id; });
+        if (row) row.focus();
+      }
     }
     function clearAllFilters() {
       filters.status = 'all';
@@ -1838,7 +1898,7 @@
     $('listRoot').addEventListener('keydown', function (e) {
       if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('st-row')) {
         e.preventDefault();
-        toggleExpand(e.target.closest('[data-subwrap]').getAttribute('data-subwrap'));
+        toggleExpand(e.target.closest('[data-subwrap]').getAttribute('data-subwrap'), true);
       }
     });
     $('statusChips').addEventListener('click', function (e) {
@@ -1900,21 +1960,24 @@
         if (!p) return;
         const snap = {
           periodValue: $('periodValue').value, periodUnit: $('periodUnit').value,
-          customType: $('customType').value, startDate: $('startDate').value, expiryDate: $('expiryDate').value
+          customType: $('customType').value, startDate: $('startDate').value, expiryDate: $('expiryDate').value,
+          autoRenew: $('autoRenew').checked
         };
         $('periodValue').value = p.v;
         $('periodUnit').value = p.u;
-        if (p.trial) $('customType').value = '试用';
+        if (p.trial) { $('customType').value = '试用'; $('autoRenew').checked = false; }
+        else if ($('customType').value.trim() === '试用') { $('customType').value = ''; }
         if (!$('startDate').value) $('startDate').value = ST.fmtDateInTz(new Date().toISOString());
         if (isValidDateStr($('startDate').value)) $('expiryDate').value = addPeriodToDateStr($('startDate').value, p.v, p.u);
         clearFieldErrors($('subscriptionForm'));
         refreshDirtyDot();
-        ST.toast('已套用' + p.label + '预设（周期' + (p.trial ? ' 7 天' : '') + '，到期日已按开始日推算）', {
+        ST.toast('已套用' + p.label + '预设，到期日已按开始日推算' + (p.trial ? '；试用结束后不会自动更新日期' : ''), {
           duration: 5000, actionLabel: '撤销',
           onAction: function () {
             $('periodValue').value = snap.periodValue;
             $('periodUnit').value = snap.periodUnit;
             $('customType').value = snap.customType;
+            $('autoRenew').checked = snap.autoRenew;
             $('startDate').value = snap.startDate;
             $('expiryDate').value = snap.expiryDate;
             refreshDirtyDot();

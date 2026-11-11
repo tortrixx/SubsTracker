@@ -191,10 +191,11 @@ export async function migrateSubscriptions(env: AppEnv): Promise<void> {
   if (oldRaw) {
     try {
       const parsed: unknown = JSON.parse(oldRaw);
-      oldSubs = Array.isArray(parsed) ? (parsed as Subscription[]) : [];
+      if (!Array.isArray(parsed)) throw new Error('旧订阅数据不是数组');
+      oldSubs = parsed as Subscription[];
     } catch (err) {
-      console.error('[migrate:subscriptions_v3] 旧数据 JSON 解析失败，按空处理:', err);
-      oldSubs = [];
+      console.error('[migrate:subscriptions_v3] 旧数据无效，保留原数据并停止迁移:', err);
+      throw new Error('旧订阅数据无效，迁移已停止');
     }
   }
 

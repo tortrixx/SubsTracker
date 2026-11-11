@@ -10,13 +10,13 @@ SubsTracker 管理一切周期性截止时间（今天是你的订阅），每�
 
 ## 功能
 
-- **订阅管理**——名称、金额、币种、计费周期（天 / 周 / 月 / 年，另支持农历周期）、试用标记、分类与标签、付款记录、一键续订（带预览与撤销）。
-- **提醒规则引擎**——每个订阅可配多条规则：到期前 N 天/小时、到期当天、到期后按间隔重复直到续费/确认。内置预设：提前 7 / 3 / 1 天 + 当天。
+- **订阅管理**——名称、金额、币种、计费周期（天 / 月 / 年，另支持农历周期）、试用标记、分类、付款记录和带预览及撤销的续期。
+- **提醒规则引擎**——每个订阅可配多条规则：到期前 N 天/小时、到期当天或到期后按间隔重复。内置预设：提前 7 / 3 / 1 天 + 当天。
 - **全局默认规则可编辑**——新订阅继承的默认规则是正式配置项（`DEFAULT_REMINDER_RULES`），在设置页可改；清空成空集是明确选择，会被如实保存与生效。
 - **11 个通知渠道**——邮件、Telegram、企业微信、Bark、NotifyX、Server 酱、PushPlus、ntfy、Gotify、WPush、通用 Webhook。每个渠道有独立配置抽屉、启停开关，发送测试走真实管线。
 - **发送时段**——可限制只在选定的小时内发送（按配置时区）；为空表示不限制。
 - **日志与健康**——每次发送与每次调度都落日志、可筛选；每页顶部有健康状态（上次整点检查结果）。
-- **双语与农历**——中英双语界面惯例、农历周期订阅（1900–2100）、多币种金额与月度支出汇总。
+- **农历与财务**——农历周期订阅（1900–2100）、多币种金额与月度支出汇总。
 - **双运行时、存储可插拔**——Cloudflare KV / SQLite（`node:sqlite`）/ 内存三种实现，统一走 `StoragePort` 接口，带契约校验脚本。
 
 ## 快速开始
@@ -33,19 +33,23 @@ npm run deploy
 ```
 
 `wrangler.toml` 的入口是 `src/index.ts`，Wrangler 直接编译 TypeScript，无需预构建。调度由每小时一次的 Cron Trigger 驱动。
+配置脚本会保留已有 `SUBSCRIPTIONS_KV` ID 和其他 KV 绑定；遇到重复或无法识别的配置会停止，需先检查。
 
 ### 路线 B — 自托管 Node 服务器
 
-前提：**Node.js ≥ 22**（SQLite 适配器用内置 `node:sqlite`）。
+前提：**Node.js 24**（SQLite 适配器用内置 `node:sqlite`）。
 
 ```bash
 npm install
 npm run build         # tsc → dist/（视图与 HTML loader 一并复制）
-cp deploy/substracker.env.example substracker.env   # 改 PORT / HOST / SQLITE_PATH
-npm start             # node dist/server.js
+npm start             # 可通过环境变量设置 PORT / HOST / SQLITE_PATH
 ```
 
 生产环境可直接用仓库自带的 systemd 单元 [`deploy/substracker.service`](deploy/substracker.service)（加固配置、`Restart=always`、读 `substracker.env`）。Node 组合根的调度对齐整点，并提供 `/healthz` 健康检查。
+
+### 路线 C — Docker Compose
+
+执行 `docker compose up -d --build`，访问 `http://127.0.0.1:3200`。SQLite 保存在 `substracker-data` 卷；默认仅本机访问，远程访问请配置反向代理和 HTTPS。`docker compose down -v` 会删除该数据卷。
 
 ### 首次登录
 
@@ -71,10 +75,12 @@ npm start             # node dist/server.js
 
 1. **整点触发**——每小时跑一次调度（Workers 是 Cron Trigger，Node 是对齐整点的定时器）。
 2. **规则求值**——按配置时区，把每个活跃订阅的规则对其（下一次）到期日求值。
-3. **时段过滤**——`NOTIFICATION_HOURS` 非空且当前小时不在其中时，顺延不发。
+3. **时段过滤**——`NOTIFICATION_HOURS` 非空且当前小时不在其中时，本次跳过发送。
 4. **分发**——到期的提醒经所有已启用渠道发出，通知标题以最紧急的订阅打头。
-5. **失败重试**——只有至少一个渠道成功才写去重标记，失败的提醒会在下一个整点自动重试。
+5. **失败重试**——各渠道独立去重；失败渠道仅在之后规则仍命中且处于发送时段时重试。每天只允许一个发送时段时可能没有补发机会；多个调度器并发使用 KV 无法保证绝对不重复。
 6. **落日志**——发送与调度记录进活动页，按来源标注（调度规则 / `manual-test` / 渠道 `test` / `thirdparty`）。
+
+升级或跨运行时迁移前请导出备份。JSON 包含订阅、支付记录、规则及配置（可选密钥），不包含通知日志、调度日志和去重状态；迁移后当前窗口内的提醒可能再次发送。
 
 ## 架构
 
@@ -92,9 +98,12 @@ npm start             # node dist/server.js
 ```bash
 npm run dev            # wrangler dev（Workers 运行时）
 npm run build          # 类型检查并构建 → dist/（Node 运行时）
-npm test               # vitest 测试套件（279 条）
+npm test               # vitest 测试套件
 npm run lint           # tsc --noEmit（strict）
 npm run check:storage  # 对 dist/ 跑存储适配器契约校验
+npm run check:server   # Node HTTP 与静态资源冒烟测试
+npm run check:setup    # KV 配置保留测试
+npm run check:ui       # 异步界面状态测试
 ```
 
 全仓 TypeScript `strict`——不用 `@ts-ignore`、不留隐式 `any`；改动以全量测试绿为准。

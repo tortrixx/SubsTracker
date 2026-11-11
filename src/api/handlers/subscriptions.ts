@@ -13,9 +13,8 @@ import {
 } from '../../data/subscriptions.js';
 import { getConfig } from '../../data/config.js';
 import { sendNotificationToAllChannels } from '../../services/notify/index.js';
-import { lunarCalendar } from '../../core/lunar.js';
-import { formatTimeInTimezone, formatTimezoneDisplay, getTimezoneDateParts } from '../../core/time.js';
-import { formatAmount } from '../../core/currency-format.js';
+import { getDaysBetween } from '../../core/time.js';
+import { formatNotificationContent } from '../../services/notify/reminder.js';
 import { extractTagsFromSubscriptions } from '../utils.js';
 import type { AppEnv } from '../../platform/storage/storage-port.js';
 
@@ -50,41 +49,14 @@ async function testSingleSubscriptionNotification(id: string, env: AppEnv): Prom
 
     const title = `手动测试通知: ${subscription.name}`;
 
-    const showLunar = config.SHOW_LUNAR === true;
-    let lunarExpiryText = '';
-
-    if (showLunar) {
-      const timezoneForLunar = config?.TIMEZONE || 'UTC';
-      const expiryParts = getTimezoneDateParts(subscription.expiryDate, timezoneForLunar);
-      const lunarExpiry = lunarCalendar.solar2lunar(expiryParts.year, expiryParts.month, expiryParts.day);
-      lunarExpiryText = lunarExpiry ? ` (农历: ${lunarExpiry.fullStr})` : '';
-    }
-
-    const timezone = config?.TIMEZONE || 'UTC';
-    const formattedExpiryDate = formatTimeInTimezone(new Date(subscription.expiryDate), timezone, 'date');
-    const currentTime = formatTimeInTimezone(new Date(), timezone, 'datetime');
-
-    const calendarType = subscription.useLunar ? '农历' : '公历';
-    const autoRenewText = subscription.autoRenew ? '是' : '否';
-    const formattedAmount = formatAmount(subscription.amount, subscription.currency || 'CNY');
-    const amountText = formattedAmount ? `\n金额: ${formattedAmount}/周期` : '';
-
-    const categoryText = subscription.category ? subscription.category : '未分类';
-
-    const commonContent = `**订阅详情**
-类型: ${subscription.customType || '其他'}${amountText}
-分类: ${categoryText}
-日历类型: ${calendarType}
-到期日期: ${formattedExpiryDate}${lunarExpiryText}
-自动续期: ${autoRenewText}
-备注: ${subscription.notes || '无'}
-发送时间: ${currentTime}
-当前时区: ${formatTimezoneDisplay(timezone)}`;
+    const daysRemaining = getDaysBetween(new Date(), subscription.expiryDate, config.TIMEZONE || 'UTC');
+    const item = { ...subscription, daysRemaining };
+    const commonContent = formatNotificationContent([item], config);
 
     const tags = extractTagsFromSubscriptions([subscription]);
     const notifyResult = await sendNotificationToAllChannels(title, commonContent, config, '[手动测试]', {
       env, subId: id, ruleId: 'manual-test',
-      metadata: { tags }
+      metadata: { tags, subscriptions: [item] }
     });
 
     const attempted = notifyResult?.attempted || 0;
@@ -138,15 +110,21 @@ async function handleSubscriptions(request: Request, env: AppEnv, path: string):
           const incoming = Array.isArray(subscription.reminderRules)
             ? subscription.reminderRules
             : null;
-          // 未提供规则（或空数组）时套默认：优先全局配置 DEFAULT_REMINDER_RULES，
-          // 未配置则由 resolveDefaultRules 回退内置预设（行为与历史一致）
-          const rules = incoming && incoming.length > 0
+          // 未提供规则才套默认；显式空数组表示用户选择不提醒。
+          const rules = incoming !== null
             ? incoming.map(remindersRepo.normalizeRule)
             : remindersRepo.resolveDefaultRules(await getConfig(env));
           await remindersRepo.replaceForSubscription(env, result.subscription.id, rules);
           await syncLegacyReminderFields(env, result.subscription.id, rules);
         } catch (err) {
           console.error('[subscriptions] 写入提醒规则失败（订阅本身已创建）:', err);
+          const rollback = await deleteSubscription(result.subscription.id, env);
+          const message = rollback.success
+            ? '提醒规则保存失败，未创建订阅，请重试'
+            : '提醒规则保存失败，清理未完成；请刷新列表检查订阅后重试';
+          return new Response(JSON.stringify({ success: false, message }), {
+            status: 500, headers: { 'Content-Type': 'application/json' }
+          });
         }
       }
       return new Response(JSON.stringify(result), {
@@ -251,6 +229,9 @@ async function handleSubscriptions(request: Request, env: AppEnv, path: string):
           await syncLegacyReminderFields(env, id, rules);
         } catch (err) {
           console.error('[subscriptions] 更新提醒规则失败（订阅本体已更新）:', err);
+          return new Response(JSON.stringify({ success: false, message: '订阅信息已保存，但提醒规则保存失败；请重试并检查提醒设置' }), {
+            status: 500, headers: { 'Content-Type': 'application/json' }
+          });
         }
       }
       return new Response(JSON.stringify(result), { status: result.success ? 200 : 400, headers: { 'Content-Type': 'application/json' } });

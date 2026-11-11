@@ -78,8 +78,9 @@ SubsTracker 按「端口与适配器」（Ports & Adapters）组织：业务逻�
 | `test` | 渠道页发送测试（`test-notification.ts` 统一落日志，subId 固定 `channel-test`） |
 | `thirdparty` | 第三方 API 触发 |
 
-调度去重口径：仅当至少一个渠道成功才写去重标记与 lastFire，
-全失败的提醒在下一个整点 tick 自动重试。
+调度按订阅、规则和渠道分别记录去重与 lastFire。失败渠道仅在后续
+检查仍命中规则且处于发送窗口时重试；KV 不提供原子去重，多实例并发
+不能保证严格一次发送。
 
 ## 配置存储与保存语义
 

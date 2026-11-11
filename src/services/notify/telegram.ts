@@ -44,7 +44,7 @@ export const telegramChannel: Channel = {
 
     const url = `https://api.telegram.org/bot${config.TG_BOT_TOKEN}/sendMessage`;
     const fullText = payload.title
-      ? `*${payload.title}*\n\n${payload.content}`
+      ? `${payload.title}\n\n${payload.content}`
       : String(payload.content || '');
     const escaped = escapeMarkdownV2(fullText);
 

@@ -11,7 +11,7 @@
  *     ruleId  = 触发的规则 ID（手动触发可填 'manual'，第三方 API 可填 'thirdparty'）
  *     channel = 通知渠道（telegram, bark, ...）
  *
- *   一条 KV 同时还存储进 metadata 里 ymdhmsRand，避免同小时内重复 key 覆盖。
+ *   key 尾部附带 UUID，避免并发或同一毫秒写入时相互覆盖。
  *
  * 默认 TTL：30 天，过期自动清理。失败日志可单独配置更长 TTL（这里统一 30 天即可，
  * 后续如需可改 writeLog 接受 ttl 参数）。
@@ -87,10 +87,8 @@ export function ymdhUtc(date: Date | string | number): string {
  */
 export async function writeLog(env: AppEnv, entry: WriteNotifyLogInput): Promise<NotifyLogEntry> {
   const ts = entry.timestamp ? new Date(entry.timestamp) : new Date();
-  // 增加随机后缀避免同小时同 sub/rule/channel 多次发送相互覆盖
-  const rand = Math.floor(ts.getTime() % 100000)
-    .toString(36)
-    .padStart(4, '0');
+  // 时间戳不是唯一 ID：同一毫秒内也可能并发写入多条记录。
+  const rand = crypto.randomUUID();
   const ruleId = entry.ruleId || 'none';
   const key = `${PREFIX}${ymdhUtc(ts)}:${entry.subId}:${ruleId}:${entry.channel}:${rand}`;
 
@@ -130,22 +128,26 @@ export async function query(env: AppEnv, filter: NotifyLogQuery = {}): Promise<N
     });
     for (const k of res.keys) all.push(k.name);
     cursor = res.list_complete ? undefined : res.cursor;
-  } while (cursor && all.length < 5000);
+  } while (cursor);
 
-  // 按 key 字典序倒序 = 时间倒序（因为 ymdh 在前缀后）
+  // 先按小时倒序，随后按记录时间排序；同一小时内 key 的订阅 ID 并不代表时间。
   all.sort((a, b) => b.localeCompare(a));
 
   const sinceTs = filter.since ? new Date(filter.since).getTime() : 0;
   const untilTs = filter.until ? new Date(filter.until).getTime() : Number.POSITIVE_INFINITY;
 
   const out: NotifyLogEntry[] = [];
+  let currentHour = '';
   for (const key of all) {
-    if (out.length >= limit) break;
+    const hour = key.slice(PREFIX.length, PREFIX.length + 10);
+    if (out.length >= limit && hour !== currentHour) break;
+    currentHour = hour;
     const raw = await env.SUBSCRIPTIONS_KV.get(key);
     if (!raw) continue;
     try {
       const parsed: unknown = JSON.parse(raw);
       const obj = parsed as Omit<NotifyLogEntry, 'key'>;
+      if (!obj || typeof obj.timestamp !== 'string' || !Number.isFinite(Date.parse(obj.timestamp))) continue;
       if (filter.subId && obj.subId !== filter.subId) continue;
       if (filter.channel && obj.channel !== filter.channel) continue;
       if (filter.status && obj.status !== filter.status) continue;
@@ -157,7 +159,8 @@ export async function query(env: AppEnv, filter: NotifyLogQuery = {}): Promise<N
     }
   }
 
-  return out;
+  out.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+  return out.slice(0, limit);
 }
 
 /**

@@ -68,6 +68,18 @@ export interface SubscriptionWithRules extends Subscription {
   reminderRules: ReminderRule[];
   reminderRulesSummary: string;
 }
+
+function validatePeriodInput(input: SubscriptionInput): string | null {
+  if (input.periodValue !== undefined && (!Number.isSafeInteger(input.periodValue) || input.periodValue <= 0)) return '周期数值须为正整数';
+  if (input.periodUnit !== undefined && !['day', 'month', 'year'].includes(input.periodUnit)) return '周期单位无效';
+  return null;
+}
+
+function assertPeriodProgress(before: Date, after: Date, iterations: number): void {
+  if (iterations > 10000 || !Number.isFinite(after.getTime()) || after.getTime() <= before.getTime()) {
+    throw new Error('无法推算到期日期，请检查周期和起始日期');
+  }
+}
 import { addCategory } from './categories.js';
 
 /**
@@ -109,26 +121,15 @@ function buildTimezoneDate(year: number, month: number, day: number, timezone: s
  *
  */
 async function getAllSubscriptions(env: AppEnv): Promise<SubscriptionWithRules[]> {
-  try {
-    const { listForSubscription, formatRulesSummary, legacyFieldToRule } = await import('./reminders.repo.js');
-    const subs = await subRepo.listAll(env);
-    return Promise.all(
-      subs.map(async (sub) => {
-        let rules = await listForSubscription(env, sub.id);
-        if (rules.length === 0) {
-          rules = [legacyFieldToRule(sub)];
-        }
-        return {
-          ...sub,
-          reminderRules: rules,
-          reminderRulesSummary: formatRulesSummary(rules)
-        };
-      })
-    );
-  } catch (error) {
-    console.error('[subscriptions] 读取列表失败:', error);
-    return [];
-  }
+  const { getStoredRules, formatRulesSummary, legacyFieldToRule } = await import('./reminders.repo.js');
+  const subs = await subRepo.listAll(env);
+  return Promise.all(
+    subs.map(async (sub) => {
+      const stored = await getStoredRules(env, sub.id);
+      const rules = stored === null ? [legacyFieldToRule(sub)] : stored;
+      return { ...sub, reminderRules: rules, reminderRulesSummary: formatRulesSummary(rules) };
+    })
+  );
 }
 
 /**
@@ -171,6 +172,8 @@ async function createSubscription(subscription: SubscriptionInput, env: AppEnv):
     if (!subscription.name || !subscription.expiryDate) {
       return { success: false, message: '缺少必填字段' };
     }
+    const periodError = validatePeriodInput(subscription);
+    if (periodError) return { success: false, message: periodError };
 
     const config = await getConfig(env);
     const timezone = config.TIMEZONE || 'Asia/Shanghai';
@@ -184,6 +187,7 @@ async function createSubscription(subscription: SubscriptionInput, env: AppEnv):
     }
 
     let useLunar = !!subscription.useLunar;
+    let advances = 0;
     if (useLunar) {
       const expiryParts = getTimezoneDateParts(expiryDate, timezone);
       let lunar: LunarDateInput | null = lunarCalendar.solar2lunar(
@@ -194,14 +198,18 @@ async function createSubscription(subscription: SubscriptionInput, env: AppEnv):
 
       if (autoRenew && lunar && subscription.periodValue && subscription.periodUnit) {
         while (getTimezoneMidnightTimestamp(expiryDate, timezone) < todayMidnight) {
+          const previous = expiryDate;
           lunar = lunarBiz.addLunarPeriod(lunar as LunarDateInput, subscription.periodValue, subscription.periodUnit);
           const solar = lunarBiz.lunar2solar(lunar as LunarDateInput) as SolarDate;
+          if (!solar) throw new Error('农历日期超出支持范围');
           expiryDate = buildTimezoneDate(solar.year, solar.month, solar.day, timezone);
+          assertPeriodProgress(previous, expiryDate, ++advances);
         }
       }
     } else {
       if (autoRenew && getTimezoneMidnightTimestamp(expiryDate, timezone) < todayMidnight && subscription.periodValue && subscription.periodUnit) {
         while (getTimezoneMidnightTimestamp(expiryDate, timezone) < todayMidnight) {
+          const previous = expiryDate;
           const endOfMonth = !!subscription.endOfMonth && !useLunar;
           expiryDate = addCalendarPeriodInTimezone(
             expiryDate,
@@ -210,6 +218,7 @@ async function createSubscription(subscription: SubscriptionInput, env: AppEnv):
             timezone,
             { endOfMonth }
           );
+          assertPeriodProgress(previous, expiryDate, ++advances);
         }
       }
     }
@@ -221,7 +230,7 @@ async function createSubscription(subscription: SubscriptionInput, env: AppEnv):
 
     const initialPaymentDate = normalizedStartDate || now.utc.toISOString();
     const newSubscription: Subscription = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       name: subscription.name,
       subscriptionMode: subscription.subscriptionMode || 'cycle',
       customType: subscription.customType || '',
@@ -246,7 +255,7 @@ async function createSubscription(subscription: SubscriptionInput, env: AppEnv):
         subscription.amount !== undefined && subscription.amount !== null
           ? [
               {
-                id: Date.now().toString(),
+                id: crypto.randomUUID(),
                 date: initialPaymentDate,
                 amount: subscription.amount,
                 currency: subscription.currency || 'CNY',
@@ -287,6 +296,8 @@ async function updateSubscription(id: string, subscription: SubscriptionInput, e
     if (!subscription.name || !subscription.expiryDate) {
       return { success: false, message: '缺少必填字段' };
     }
+    const periodError = validatePeriodInput(subscription);
+    if (periodError) return { success: false, message: periodError };
 
     const config = await getConfig(env);
     const timezone = config.TIMEZONE || 'Asia/Shanghai';
@@ -304,6 +315,7 @@ async function updateSubscription(id: string, subscription: SubscriptionInput, e
     }
 
     let useLunar = !!subscription.useLunar;
+    let advances = 0;
     if (useLunar) {
       const expiryParts = getTimezoneDateParts(expiryDate, timezone);
       let lunar: LunarDateInput | null = lunarCalendar.solar2lunar(
@@ -316,9 +328,12 @@ async function updateSubscription(id: string, subscription: SubscriptionInput, e
       }
       if (autoRenew && lunar && getTimezoneMidnightTimestamp(expiryDate, timezone) < todayMidnight && subscription.periodValue && subscription.periodUnit) {
         do {
+          const previous = expiryDate;
           lunar = lunarBiz.addLunarPeriod(lunar as LunarDateInput, subscription.periodValue, subscription.periodUnit);
           const solar = lunarBiz.lunar2solar(lunar as LunarDateInput) as SolarDate;
+          if (!solar) throw new Error('农历日期超出支持范围');
           expiryDate = buildTimezoneDate(solar.year, solar.month, solar.day, timezone);
+          assertPeriodProgress(previous, expiryDate, ++advances);
         } while (getTimezoneMidnightTimestamp(expiryDate, timezone) < todayMidnight);
       }
     } else {
@@ -328,6 +343,7 @@ async function updateSubscription(id: string, subscription: SubscriptionInput, e
           : !!existing.endOfMonth && !useLunar;
       if (autoRenew && getTimezoneMidnightTimestamp(expiryDate, timezone) < todayMidnight && subscription.periodValue && subscription.periodUnit) {
         while (getTimezoneMidnightTimestamp(expiryDate, timezone) < todayMidnight) {
+          const previous = expiryDate;
           expiryDate = addCalendarPeriodInTimezone(
             expiryDate,
             subscription.periodValue,
@@ -335,6 +351,7 @@ async function updateSubscription(id: string, subscription: SubscriptionInput, e
             timezone,
             { endOfMonth }
           );
+          assertPeriodProgress(previous, expiryDate, ++advances);
         }
       }
     }
@@ -368,7 +385,7 @@ async function updateSubscription(id: string, subscription: SubscriptionInput, e
     } else if (!hasInitialPayment && newAmount !== null && newAmount !== undefined && newAmount > 0) {
       const initialDate = existing.startDate || existing.createdAt || new Date().toISOString();
       paymentHistory.unshift({
-        id: Date.now().toString(),
+        id: crypto.randomUUID(),
         date: initialDate,
         amount: newAmount,
         currency: subscription.currency || existing.currency || 'CNY',
@@ -383,7 +400,7 @@ async function updateSubscription(id: string, subscription: SubscriptionInput, e
       ...existing,
       name: subscription.name,
       subscriptionMode: subscription.subscriptionMode || existing.subscriptionMode || 'cycle',
-      customType: subscription.customType || existing.customType || '',
+      customType: subscription.customType !== undefined ? subscription.customType : (existing.customType || ''),
       category:
         subscription.category !== undefined
           ? subscription.category.trim()
@@ -541,7 +558,7 @@ export function computeManualRenewal(
   }
 
   const paymentRecord: PaymentRecord = {
-    id: Date.now().toString(),
+    id: crypto.randomUUID(),
     date: paymentDate.toISOString(),
     amount,
     currency: subscription.currency || 'CNY',

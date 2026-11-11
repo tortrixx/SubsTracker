@@ -8,7 +8,7 @@
  * - 创建订阅时 reminderRules 字段联动
  * - 鉴权失败路径
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 // @ts-ignore
 import { env } from 'cloudflare:test';
 
@@ -38,6 +38,7 @@ async function loginCookie() {
 }
 
 beforeEach(clearKv);
+afterEach(() => vi.useRealTimers());
 
 describe('GET /api/subscriptions/:id/reminders', () => {
   it('未授权 → 401', async () => {
@@ -287,6 +288,25 @@ describe('GET/POST /api/categories', () => {
 });
 
 describe('GET /api/subscriptions/:id/next-reminder', () => {
+  it('预览遵循时区和发送时段，停用后不再显示提醒', async () => {
+    const cookie = await loginCookie();
+    await env.SUBSCRIPTIONS_KV.put('config', JSON.stringify({ ADMIN_USERNAME: 'admin', ADMIN_PASSWORD: 'password', JWT_SECRET: 'k', TIMEZONE: 'Asia/Shanghai', NOTIFICATION_HOURS: ['08'] }));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-11T04:00:00Z'));
+    const created = await app.request('/api/subscriptions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ name: '预览', expiryDate: '2026-12-11', periodValue: 1, periodUnit: 'month', autoRenew: false,
+        reminderRules: [{ type: 'before_expiry', value: 7, unit: 'days', isEnabled: true }] })
+    }, env);
+    const id = (await created.json()).subscription.id;
+    const preview = await app.request(`/api/subscriptions/${id}/next-reminder`, { headers: { Cookie: cookie } }, env);
+    expect((await preview.json()).nextReminder.nextFireTime).toBe('2026-12-04T00:00:00.000Z');
+    const disabled = await app.request(`/api/subscriptions/${id}/toggle-status`, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify({ isActive: false }) }, env);
+    expect((await disabled.json()).success).toBe(true);
+    const inactive = await app.request(`/api/subscriptions/${id}/next-reminder`, { headers: { Cookie: cookie } }, env);
+    expect((await inactive.json()).nextReminder).toBeNull();
+  });
+
   it('返回最近的下次触发时间', async () => {
     const cookie = await loginCookie();
     // Create a subscription with future expiry

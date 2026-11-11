@@ -13,12 +13,15 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "start": "node dist/server.js",
-    "check:storage": "npm run build >/dev/null 2>&1 && node scripts/check-storage.mjs",
+    "check:storage": "npm run build && node scripts/check-storage.mjs",
+    "check:server": "npm run build && node scripts/check-server.mjs",
+    "check:setup": "node --test scripts/setup-kv.test.cjs",
+    "check:ui": "node --test tests/node/*.test.cjs",
     "dev": "wrangler dev"
   },
   "dependencies": {
-    "@hono/node-server": "^1.19.18",
-    "hono": "^4.6.14"
+    "@hono/node-server": "^2.1.6",
+    "hono": "^4.13.17"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.5.40",

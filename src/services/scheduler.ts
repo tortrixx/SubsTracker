@@ -10,8 +10,7 @@
  *    与 NOTIFICATION_HOURS（按用户 TZ 解释）比对，语义清晰。
  * 2. 多提醒规则：从 reminders.repo 加载每个订阅的规则数组，逐条调
  *    reminder-engine.shouldFire 判断（不再单点 reminderUnit/reminderValue）。
- * 3. 去重粒度细化：dedup key 改为 (subId × ruleId × ymdh-local)，避免一条订阅
- *    多规则相互打架。
+ * 3. 按订阅、规则、渠道和本地日期或小时去重；单个渠道失败不会阻止它重试。
  * 4. 结构化日志：每次执行写一条 sched_log；每条通知发送（成功/失败）写 notify_log。
  *
  * 数据流：
@@ -19,7 +18,7 @@
  *     ensureMigrations →
  *     load config + subs + rules →
  *     check window →
- *     for each (sub, rule):
+ *     for each (sub, rule, channel):
  *       - daysDiff/hoursDiff 用 getDaysBetween（按用户 TZ）算
  *       - 自动续订（针对 sub 整体，仅算一次）
  *       - shouldFire? → dedupe → dispatch.send → notify_log
@@ -29,7 +28,6 @@
 
 import { getConfig } from '../data/config.js';
 import type { AppConfig } from '../data/config.js';
-import { getAllSubscriptions } from '../data/subscriptions.js';
 import * as subRepo from '../data/subscriptions.repo.js';
 import * as remindersRepo from '../data/reminders.repo.js';
 import * as schedulerLogsRepo from '../data/scheduler-logs.repo.js';
@@ -45,7 +43,7 @@ import {
   getTimestampForTimezoneParts
 } from '../core/time.js';
 import { formatNotificationContent, formatMatchedReminderRule } from './notify/reminder.js';
-import { dispatch } from './notify/dispatch.js';
+import { dispatch, ALL_CHANNELS } from './notify/dispatch.js';
 import { shouldFire } from './notify/reminder-engine.js';
 import { lunarCalendar, lunarBiz } from '../core/lunar.js';
 import type { LunarDate, LunarDateInput } from '../core/lunar.js';
@@ -73,12 +71,13 @@ function buildDedupeBucket(rule: ReminderRule, nowParts: { year: number; month: 
   return isDayRule ? ymd : `${ymd}${nowParts.hourString}`;
 }
 
-async function readLastFireAt(env: AppEnv, subId: string, ruleId: string) {
-  return env.SUBSCRIPTIONS_KV.get(`notify_lastfire:${subId}:${ruleId}`);
+async function readLastFireAt(env: AppEnv, subId: string, ruleId: string, channel: string) {
+  return (await env.SUBSCRIPTIONS_KV.get(`notify_lastfire:${subId}:${ruleId}:${channel}`))
+    || env.SUBSCRIPTIONS_KV.get(`notify_lastfire:${subId}:${ruleId}`);
 }
 
-async function writeLastFireAt(env: AppEnv, subId: string, ruleId: string, iso: string): Promise<void> {
-  await env.SUBSCRIPTIONS_KV.put(`notify_lastfire:${subId}:${ruleId}`, iso, {
+async function writeLastFireAt(env: AppEnv, subId: string, ruleId: string, channel: string, iso: string): Promise<void> {
+  await env.SUBSCRIPTIONS_KV.put(`notify_lastfire:${subId}:${ruleId}:${channel}`, iso, {
     expirationTtl: LAST_FIRE_TTL_SEC
   });
 }
@@ -131,12 +130,15 @@ export async function checkExpiringSubscriptions(env: AppEnv): Promise<Scheduler
       normalizedHours.includes('ALL') ||
       normalizedHours.includes(now.hourString);
 
-    const subscriptions = await getAllSubscriptions(env);
+    // 调度只读取订阅原件；逐个加载启用订阅的规则，避免一个坏规则阻断其他订阅。
+    const subscriptions = await subRepo.listAll(env);
     let activeCount = 0;
     let matchedCount = 0;
     let dedupedCount = 0;
     let sentCount = 0;
     let autoRenewedCount = 0;
+    const ruleErrors: string[] = [];
+    const ruleErrorText = () => ruleErrors.length ? `${ruleErrors.length} 条订阅的提醒规则读取失败` : '';
 
     // 不在通知时段：不发送但仍跑自动续订（业务上希望续订总能发生）
     const candidates: Candidate[] = [];
@@ -171,23 +173,25 @@ export async function checkExpiringSubscriptions(env: AppEnv): Promise<Scheduler
       }
 
       // 加载规则；老订阅没有规则时，用稳定 id 的 legacy 规则（避免每 tick 新 UUID 打穿 dedupe）
-      let rules = await remindersRepo.listForSubscription(env, subscription.id);
-      if (rules.length === 0) {
+      let rules: ReminderRule[] | null;
+      try {
+        rules = await remindersRepo.getStoredRules(env, subscription.id);
+      } catch (error) {
+        console.error('[定时任务] 读取提醒规则失败:', subscription.id, error);
+        ruleErrors.push(subscription.id);
+        continue;
+      }
+      if (rules === null) {
         const legacy = remindersRepo.legacyFieldToRule(subscription);
         legacy.id = `legacy:${subscription.id}`;
         rules = [legacy];
       }
 
       for (const rule of rules) {
-        const lastFireAtIso =
-          rule.type === 'after_expiry'
-            ? (await readLastFireAt(env, subscription.id, rule.id)) || undefined
-            : undefined;
         const decision = shouldFire(rule, {
           daysDiff,
           hoursDiff,
-          nowIso: now.utc.toISOString(),
-          lastFireAtIso
+          nowIso: now.utc.toISOString()
         });
         if (!decision.fire) continue;
         matchedCount++;
@@ -215,120 +219,109 @@ export async function checkExpiringSubscriptions(env: AppEnv): Promise<Scheduler
         dedupedCount: 0,
         sentCount: 0,
         autoRenewedCount,
-        status: 'skipped',
-        reason: `当前${timezone} ${now.hourString}点不在允许发送的小时 [${normalizedHours.join(',') || '未限制=每小时'}] 内（正常跳过，不会发通知）`
+        status: ruleErrors.length ? 'error' : 'skipped',
+        reason: `当前${timezone} ${now.hourString}点不在允许发送的小时 [${normalizedHours.join(',') || '未限制=每小时'}] 内（正常跳过，不会发通知）${ruleErrors.length ? `；${ruleErrorText()}` : ''}`,
+        extra: ruleErrors.length ? { ruleErrors } : undefined
       });
       return entry;
     }
 
-    // 在时段：先查重（不预占），发送成功后再写 dedupe / lastFire
-    const ready: Array<Candidate & { dedupeKey: string }> = [];
-    const nowParts = {
-      year: now.parts.year,
-      month: now.parts.month,
-      day: now.parts.day,
-      hourString: now.hourString
-    };
+    // 每个渠道独立记录成功状态：部分失败时，下次只重试失败的渠道。
+    // 历史版本的无渠道后缀键仍然生效，避免升级后重复发送。
+    const enabled = Array.isArray(config.ENABLED_NOTIFIERS) ? config.ENABLED_NOTIFIERS : [];
+    const channels = [...new Set(enabled)].filter((name) => Object.hasOwn(ALL_CHANNELS, name));
+    const nowParts = { year: now.parts.year, month: now.parts.month, day: now.parts.day, hourString: now.hourString };
+    const byChannel = new Map<string, Array<Candidate & { dedupeKey: string }>>();
+    let dedupedCandidates = 0;
     for (const c of candidates) {
       const bucket = buildDedupeBucket(c.rule, nowParts);
-      const dedupeKey = `notify_dedupe:${c.sub.id}:${c.rule.id}:${bucket}`;
-      const exists = await env.SUBSCRIPTIONS_KV.get(dedupeKey);
-      if (exists) {
-        dedupedCount++;
-        continue;
+      const oldKey = `notify_dedupe:${c.sub.id}:${c.rule.id}:${bucket}`;
+      const oldDedupe = await env.SUBSCRIPTIONS_KV.get(oldKey);
+      let eligible = false;
+      for (const channel of channels) {
+        const dedupeKey = `${oldKey}:${channel}`;
+        if (oldDedupe || await env.SUBSCRIPTIONS_KV.get(dedupeKey)) continue;
+        if (c.rule.type === 'after_expiry') {
+          const lastFireAtIso = await readLastFireAt(env, c.sub.id, c.rule.id, channel);
+          if (!shouldFire(c.rule, { daysDiff: c.daysDiff, hoursDiff: c.hoursDiff,
+            nowIso: now.utc.toISOString(), lastFireAtIso: lastFireAtIso || undefined }).fire) continue;
+        }
+        eligible = true;
+        const list = byChannel.get(channel) || [];
+        list.push({ ...c, dedupeKey });
+        byChannel.set(channel, list);
       }
-      ready.push({ ...c, dedupeKey });
+      if (channels.length > 0 && !eligible) dedupedCandidates++;
     }
+    dedupedCount = dedupedCandidates;
 
-    if (ready.length === 0) {
-      const entry = await schedulerLogsRepo.writeLog(env, {
-        startedAt: startedAtIso,
-        finishedAt: new Date().toISOString(),
-        timezone,
-        currentHour: now.hourString,
-        configuredHours: normalizedHours,
-        inWindow: true,
-        checkedCount: activeCount,
-        matchedCount,
-        dedupedCount,
-        sentCount: 0,
-        autoRenewedCount,
-        status: matchedCount > 0 ? 'skipped' : 'ok',
-        reason:
-          matchedCount > 0
-            ? `命中 ${matchedCount} 条规则但全部在去重窗口内（跳过 ${dedupedCount}）`
-            : '本次未命中任何提醒规则'
+    if (byChannel.size === 0) {
+      return schedulerLogsRepo.writeLog(env, {
+        startedAt: startedAtIso, finishedAt: new Date().toISOString(), timezone,
+        currentHour: now.hourString, configuredHours: normalizedHours, inWindow: true,
+        checkedCount: activeCount, matchedCount, dedupedCount, sentCount: 0, autoRenewedCount,
+        status: ruleErrors.length ? 'error' : matchedCount > 0 ? 'skipped' : 'ok',
+        reason: (channels.length === 0 && matchedCount > 0 ? '未启用任何有效通知渠道'
+          : matchedCount > 0 ? `命中 ${matchedCount} 条规则但全部在去重或重复间隔内`
+          : '本次未命中任何提醒规则') + (ruleErrors.length ? `；${ruleErrorText()}` : ''),
+        extra: ruleErrors.length ? { ruleErrors } : undefined
       });
-      return entry;
     }
 
-    // 排序：按剩余天数升序，更紧迫的在前
-    ready.sort((a, b) => a.daysDiff - b.daysDiff);
-
-    // 一次性聚合所有订阅成一条通知（与既有渠道契约一致）
-    // notify_log 按 (subId, ruleId, channel) 维度落，仍可细粒度查询
-    const enrichedSubs = ready.map((c) => ({
-      ...c.sub,
-      daysRemaining: c.daysDiff,
-      hoursRemaining: Math.round(c.hoursDiff),
-      matchedReminderRule: c.rule
-    }));
-    const content = formatNotificationContent(enrichedSubs, config);
-    const title = buildNotificationTitle(enrichedSubs);
-
-    // 给 dispatch 提供主 subId+ruleId（聚合通知用第一条做归属）
-    const primary = ready[0];
-    const dispatchResult = await dispatch(
-      { title, content },
-      config,
-      {
-        env,
-        subId: primary.sub.id,
-        ruleId: primary.rule.id,
-        logPrefix: '[定时任务]',
-        metadata: {
-          tags: enrichedSubs.map((s) => s.name),
-          daysRemaining: primary.daysDiff,
-          ruleType: primary.rule.type,
-          ruleValue: primary.rule.value,
-          // 结构化订阅原件：富渲染渠道（如邮件）直接用结构排版，
-          // 不必再从纯文本正文反解析。只放渲染所需字段，
-          // 不带 paymentHistory 等无关数据。
-          subscriptions: enrichedSubs.map((s) => ({
-            name: s.name,
-            daysRemaining: s.daysRemaining,
-            hoursRemaining: s.hoursRemaining,
-            expiryDate: s.expiryDate,
-            amount: s.amount ?? null,
-            currency: s.currency || 'CNY',
-            category: s.category || '',
-            customType: s.customType || '',
-            periodValue: s.periodValue ?? null,
-            periodUnit: s.periodUnit || '',
-            autoRenew: !!s.autoRenew,
-            useLunar: !!s.useLunar,
-            notes: s.notes || '',
-            reminderText: s.matchedReminderRule
-              ? formatMatchedReminderRule(s.matchedReminderRule)
-              : ''
+    let attempted = 0;
+    let failedCount = 0;
+    const channelResults: Record<string, boolean> = {};
+    const allReady = new Map<string, Candidate>();
+    const persistenceErrors: string[] = [];
+    const channelTasks = [...byChannel].map(async ([channel, ready]) => {
+      ready.sort((a, b) => a.daysDiff - b.daysDiff);
+      for (const c of ready) allReady.set(`${c.sub.id}:${c.rule.id}`, c);
+      // 正文和标题按订阅去重；去重记录、日志仍覆盖每一条命中的规则。
+      const uniqueSubs = [...new Map(ready.map((c) => [c.sub.id, c])).values()];
+      const enrichedSubs = uniqueSubs.map((c) => ({ ...c.sub, daysRemaining: c.daysDiff,
+        hoursRemaining: Math.round(c.hoursDiff), matchedReminderRule: c.rule }));
+      const primary = ready[0];
+      const result = await dispatch({ title: buildNotificationTitle(enrichedSubs),
+        content: formatNotificationContent(enrichedSubs, config) }, config, {
+        channels: [channel], env,
+        logTargets: ready.map((c) => ({ subId: c.sub.id, ruleId: c.rule.id })),
+        logPrefix: '[定时任务]', metadata: {
+          tags: enrichedSubs.map((sub) => sub.name), daysRemaining: primary.daysDiff,
+          ruleType: primary.rule.type, ruleValue: primary.rule.value,
+          subscriptions: enrichedSubs.map((sub) => ({
+            name: sub.name, daysRemaining: sub.daysRemaining, hoursRemaining: sub.hoursRemaining,
+            expiryDate: sub.expiryDate, amount: sub.amount ?? null, currency: sub.currency || 'CNY',
+            category: sub.category || '', customType: sub.customType || '',
+            periodValue: sub.periodValue ?? null, periodUnit: sub.periodUnit || '',
+            autoRenew: !!sub.autoRenew, useLunar: !!sub.useLunar, notes: sub.notes || '',
+            reminderText: sub.matchedReminderRule ? formatMatchedReminderRule(sub.matchedReminderRule) : ''
           }))
         }
-      }
-    );
-    sentCount = dispatchResult.successCount;
-
-    // 仅在至少一渠道成功时写入去重与 lastFire，失败可在后续 tick 重试
-    if (dispatchResult.successCount > 0) {
-      const firedAt = now.utc.toISOString();
-      await Promise.all(
-        ready.map(async (c) => {
+      });
+      attempted += result.attempted;
+      sentCount += result.successCount;
+      failedCount += result.failedCount;
+      Object.assign(channelResults, result.channelResults);
+      if (result.successCount > 0) {
+        const writes = await Promise.allSettled(ready.map(async (c) => {
           await env.SUBSCRIPTIONS_KV.put(c.dedupeKey, '1', { expirationTtl: DEDUPE_TTL_SEC });
-          if (c.rule.type === 'after_expiry') {
-            await writeLastFireAt(env, c.sub.id, c.rule.id, firedAt);
-          }
-        })
-      );
+          if (c.rule.type === 'after_expiry') await writeLastFireAt(env, c.sub.id, c.rule.id, channel, now.utc.toISOString());
+        }));
+        if (writes.some((write) => write.status === 'rejected')) persistenceErrors.push(channel);
+      }
+    });
+    const settled = await Promise.allSettled(channelTasks);
+    const channelNames = [...byChannel.keys()];
+    for (const [index, result] of settled.entries()) {
+      if (result.status === 'rejected') {
+        attempted++;
+        failedCount++;
+        channelResults[channelNames[index]] = false;
+        console.error('[定时任务] 渠道处理失败:', result.reason);
+      }
     }
+    const ready = [...allReady.values()];
+    const dispatchResult = { attempted, successCount: sentCount, failedCount, channelResults };
 
     const entry = await schedulerLogsRepo.writeLog(env, {
       startedAt: startedAtIso,
@@ -342,12 +335,13 @@ export async function checkExpiringSubscriptions(env: AppEnv): Promise<Scheduler
       dedupedCount,
       sentCount,
       autoRenewedCount,
-      status: dispatchResult.failedCount > 0 && sentCount === 0 ? 'error' : 'ok',
+      status: dispatchResult.failedCount > 0 || persistenceErrors.length > 0 || ruleErrors.length > 0 ? 'error' : 'ok',
       reason:
-        dispatchResult.attempted > 0
-          ? `发送到 ${dispatchResult.attempted} 个渠道，成功 ${dispatchResult.successCount} / 失败 ${dispatchResult.failedCount}`
-          : '未启用任何通知渠道',
+        (dispatchResult.attempted > 0
+          ? `发送到 ${dispatchResult.attempted} 个渠道，成功 ${dispatchResult.successCount} / 失败 ${dispatchResult.failedCount}${persistenceErrors.length ? `；去重状态写入失败：${persistenceErrors.join('、')}` : ''}`
+          : '未启用任何通知渠道') + (ruleErrors.length ? `；${ruleErrorText()}` : ''),
       extra: {
+        ruleErrors,
         candidates: ready.map((c) => ({
           subId: c.sub.id,
           subName: c.sub.name,
@@ -442,7 +436,7 @@ function autoRenew(sub: any, now: Date, timezone: string, config: AppConfig): { 
   const newExpiryDate = expiryDate;
 
   const paymentRecord = {
-    id: Date.now().toString(),
+    id: crypto.randomUUID(),
     date: now.toISOString(),
     amount: sub.amount || 0,
     type: 'auto',

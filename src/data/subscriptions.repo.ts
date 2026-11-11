@@ -75,18 +75,26 @@ export interface Subscription {
 const KEY_INDEX = 'sub_index';
 const KEY_PREFIX = 'sub:';
 
+/** 只检查原始键是否存在；即使 JSON 已损坏也不得覆盖。 */
+export async function exists(env: AppEnv, id: string): Promise<boolean> {
+  return !!id && (await env.SUBSCRIPTIONS_KV.get(KEY_PREFIX + id)) !== null;
+}
+
 /**
  * 读取订阅 ID 列表（索引）。
  *
  */
 export async function listIds(env: AppEnv): Promise<string[]> {
   const raw = await env.SUBSCRIPTIONS_KV.get(KEY_INDEX);
-  if (!raw) return [];
+  if (raw === null) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as unknown[]).filter((x): x is string => typeof x === 'string') : [];
+    if (!Array.isArray(parsed) || !parsed.every((id) => typeof id === 'string' && id.length > 0)) {
+      throw new Error('索引格式无效');
+    }
+    return parsed as string[];
   } catch {
-    return [];
+    throw new Error('订阅索引数据无效，请检查存储及备份');
   }
 }
 
@@ -148,12 +156,12 @@ export async function save(env: AppEnv, subscription: Subscription): Promise<Sub
   if (!subscription || typeof subscription.id !== 'string' || subscription.id === '') {
     throw new Error('订阅缺少有效 id');
   }
+  const ids = await listIds(env);
   await env.SUBSCRIPTIONS_KV.put(
     KEY_PREFIX + subscription.id,
     JSON.stringify(subscription)
   );
 
-  const ids = await listIds(env);
   if (!ids.includes(subscription.id)) {
     ids.push(subscription.id);
     await writeIds(env, ids);
@@ -169,10 +177,10 @@ export async function save(env: AppEnv, subscription: Subscription): Promise<Sub
  */
 export async function saveMany(env: AppEnv, subs: Subscription[]): Promise<void> {
   if (!Array.isArray(subs) || subs.length === 0) return;
+  const idsExisting = await listIds(env);
   await Promise.all(
     subs.map((s) => env.SUBSCRIPTIONS_KV.put(KEY_PREFIX + s.id, JSON.stringify(s)))
   );
-  const idsExisting = await listIds(env);
   const set = new Set(idsExisting);
   for (const s of subs) {
     if (typeof s.id === 'string') set.add(s.id);
@@ -188,17 +196,16 @@ export async function saveMany(env: AppEnv, subs: Subscription[]): Promise<void>
  */
 export async function deleteById(env: AppEnv, id: string): Promise<boolean> {
   if (!id) return false;
+  const ids = await listIds(env);
   const before = await env.SUBSCRIPTIONS_KV.get(KEY_PREFIX + id);
   if (!before) {
     // 索引里可能仍有残留，顺手清掉
-    const ids = await listIds(env);
     if (ids.includes(id)) {
       await writeIds(env, ids.filter((x) => x !== id));
     }
     return false;
   }
   await env.SUBSCRIPTIONS_KV.delete(KEY_PREFIX + id);
-  const ids = await listIds(env);
   if (ids.includes(id)) {
     await writeIds(env, ids.filter((x) => x !== id));
   }

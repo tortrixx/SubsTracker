@@ -10,13 +10,13 @@ One TypeScript codebase, two runtimes: deploy the exact same code to **Cloudflar
 
 ## Features
 
-- **Subscription management** — name, amount, currency, billing cycle (day / week / month / year, plus lunar cycles), trial flag, categories and tags, payment history, one-click renewal with preview and undo.
-- **Reminder rule engine** — per-subscription rules: *N* days/hours before expiry, on the day, or repeating after expiry until renewed/acknowledged. Ships with a sensible preset (7 / 3 / 1 days before + on the day).
+- **Subscription management** — name, amount, currency, billing cycle (day / month / year, plus lunar cycles), trial flag, categories, payment history, and renewal with preview and undo.
+- **Reminder rule engine** — per-subscription rules: *N* days/hours before expiry, on the day, or repeating after expiry. Ships with a preset (7 / 3 / 1 days before + on the day).
 - **Editable global default rules** — the preset new subscriptions inherit is a real setting (`DEFAULT_REMINDER_RULES`), editable in the UI. An empty set is a deliberate choice and is honoured as-is.
 - **11 notification channels** — Email, Telegram, WeCom (WeChat Work), Bark, NotifyX, ServerChan, PushPlus, ntfy, Gotify, WPush, and a generic Webhook. Per-channel config drawers, enable switches, and one-click send tests that go through the real delivery pipeline.
 - **Sending hours** — restrict delivery to chosen hours of the day (in the configured timezone). Empty means *unrestricted*.
 - **Logs & health** — every send and every scheduler run is logged and filterable; a health line shows the last tick result on every page.
-- **Bilingual UI, lunar calendar** — Chinese/English interface conventions, lunar-cycle subscriptions (1900–2100), multi-currency amounts with monthly spend summaries.
+- **Lunar calendar** — lunar-cycle subscriptions (1900–2100), multi-currency amounts with monthly spend summaries.
 - **Dual runtime, pluggable storage** — Cloudflare KV, SQLite (`node:sqlite`), or in-memory, behind one `StoragePort` interface with a conformance check.
 
 ## Quick Start
@@ -33,19 +33,23 @@ npm run deploy
 ```
 
 `wrangler.toml` points at `src/index.ts`; Wrangler compiles the TypeScript directly — no pre-build needed. An hourly Cron Trigger drives the scheduler.
+The setup script preserves existing `SUBSCRIPTIONS_KV` IDs and other KV bindings; it stops on ambiguous or unsupported configurations.
 
 ### Option B — Self-hosted Node server
 
-Prerequisites: **Node.js ≥ 22** (the SQLite adapter uses the built-in `node:sqlite`).
+Prerequisites: **Node.js 24** (the SQLite adapter uses the built-in `node:sqlite`).
 
 ```bash
 npm install
 npm run build         # tsc → dist/ (views and the HTML loader are copied alongside)
-cp deploy/substracker.env.example substracker.env   # adjust PORT / HOST / SQLITE_PATH
-npm start             # node dist/server.js
+npm start             # optionally set PORT / HOST / SQLITE_PATH in the environment
 ```
 
 For production, a ready-made systemd unit ships in [`deploy/substracker.service`](deploy/substracker.service) (hardened, `Restart=always`, reads `substracker.env`). The Node composition root aligns its scheduler to the top of each hour and exposes `/healthz` for monitoring.
+
+### Option C — Docker Compose
+
+Run `docker compose up -d --build` and open `http://127.0.0.1:3200`. SQLite is stored in the `substracker-data` volume. The default port is bound to localhost; use a reverse proxy and HTTPS for remote access. `docker compose down -v` removes the volume.
 
 ### First login
 
@@ -71,10 +75,12 @@ Invalid `DEFAULT_REMINDER_RULES` payloads are rejected as a whole (HTTP 400); th
 
 1. **Tick** — once per hour (Workers Cron Trigger, or the Node scheduler aligned to the hour) the scheduler runs.
 2. **Evaluate** — each active subscription's reminder rules are evaluated against its (next) expiry date in the configured timezone.
-3. **Filter** — if `NOTIFICATION_HOURS` is non-empty and the current hour is not in it, sending is deferred.
+3. **Filter** — if `NOTIFICATION_HOURS` is non-empty and the current hour is not in it, that check skips sending.
 4. **Dispatch** — due reminders are sent through every enabled channel. The notification title leads with the most urgent subscription.
-5. **Retry** — deduplication markers are written only when at least one channel succeeds, so a failed reminder is retried automatically on the next tick.
+5. **Retry** — each channel is deduplicated separately. Failed channels retry only on a later check where the rule still matches and the sending window is open; a single daily window may leave no retry opportunity. Concurrent schedulers on KV cannot guarantee exactly-once delivery.
 6. **Log** — sends and scheduler runs land in the Activity page, tagged by origin (scheduled rule, `manual-test`, channel `test`, or `thirdparty`).
+
+Export a backup before upgrading or moving between runtimes. The JSON contains subscriptions, payment history, rules and configuration (secrets optional), but not notification logs, scheduler logs or deduplication state; a matching reminder may be sent again after migration.
 
 ## Architecture
 
@@ -92,9 +98,12 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 ```bash
 npm run dev            # wrangler dev (Workers runtime)
 npm run build          # type-check build → dist/ for the Node runtime
-npm test               # vitest suite (279 tests)
+npm test               # vitest suite
 npm run lint           # tsc --noEmit (strict)
 npm run check:storage  # storage-adapter conformance checks against dist/
+npm run check:server   # Node HTTP and static-asset smoke test
+npm run check:setup    # KV configuration preservation tests
+npm run check:ui       # asynchronous UI state tests
 ```
 
 TypeScript is `strict` across the repo — no `@ts-ignore`, no implicit `any`. Changes should land with the full suite green.

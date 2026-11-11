@@ -18,7 +18,14 @@
     @keyframes ov-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
     @media (prefers-reduced-motion: reduce) { .ov-wrap { animation: none; } }
     .ov-stack { display: flex; flex-direction: column; gap: var(--sp-4); }
-    .ov-head { margin-bottom: var(--sp-4); }
+    .ov-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+    .ov-head-action { flex: none; text-decoration: none; }
+    @media (max-width: 480px) {
+      .ov-head { align-items: flex-start; }
+      .ov-head-action { font-size: var(--fs-sm); }
+      #ov-timeline-card .st-row { flex-wrap: wrap; }
+      #ov-timeline-card .st-row-main { flex-basis: 100%; }
+    }
     .ov-title { font-size: var(--fs-2xl); font-weight: 800; color: var(--text-main); letter-spacing: -0.01em; }
     .ov-card {
       background: var(--surface); border: 1px solid var(--hairline);
@@ -115,8 +122,11 @@
 
       <div class="st-tz-content">
         <div class="ov-head">
-          <h1 class="ov-title">概览</h1>
-          <p class="st-caption" id="ov-today"></p>
+          <div>
+            <h1 class="ov-title">概览</h1>
+            <p class="st-caption" id="ov-today"></p>
+          </div>
+          <a class="st-btn st-btn--primary ov-head-action" href="/admin"><i class="fas fa-list" aria-hidden="true"></i> 管理订阅</a>
         </div>
 
         <div id="ov-blocks" class="ov-stack">
@@ -134,8 +144,8 @@
               <div class="ov-card-head">
                 <span class="ov-card-title"><i class="fas fa-stream"></i>未来 30 天</span>
                 <div class="st-seg" role="group" aria-label="时间线视图切换">
-                  <button type="button" class="st-seg-btn is-active" data-seg-group="timeline" data-seg-value="upcoming">即将续费</button>
-                  <button type="button" class="st-seg-btn" data-seg-group="timeline" data-seg-value="recent">最近支付</button>
+                  <button type="button" class="st-seg-btn is-active" aria-pressed="true" data-seg-group="timeline" data-seg-value="upcoming">即将续费</button>
+                  <button type="button" class="st-seg-btn" aria-pressed="false" data-seg-group="timeline" data-seg-value="recent">最近支付</button>
                 </div>
               </div>
               <div id="ov-timeline-body">
@@ -161,8 +171,8 @@
             <div class="ov-card-head">
               <span class="ov-card-title"><i class="fas fa-chart-bar"></i>支出构成</span>
               <div class="st-seg" role="group" aria-label="支出构成维度切换">
-                <button type="button" class="st-seg-btn is-active" data-seg-group="expense" data-seg-value="type">按类型</button>
-                <button type="button" class="st-seg-btn" data-seg-group="expense" data-seg-value="category">按分类</button>
+                <button type="button" class="st-seg-btn is-active" aria-pressed="true" data-seg-group="expense" data-seg-value="type">按类型</button>
+                <button type="button" class="st-seg-btn" aria-pressed="false" data-seg-group="expense" data-seg-value="category">按分类</button>
               </div>
             </div>
             <div id="ov-expense-body">
@@ -196,6 +206,8 @@
       var state = {
         subs: null,          // /api/subscriptions 数组
         stats: null,         // /api/dashboard/stats 的 data
+        statsError: null,
+        reminderRequest: 0,
         health: null,        // ST.health() 结果
         nextReminder: undefined, // { name, fireTime } | null（undefined = 尚未算出）
         timelineSeg: 'upcoming',
@@ -339,6 +351,7 @@
         var nrValue, nrSub;
         if (nr === undefined) { nrValue = '…'; nrSub = '正在计算'; }
         else if (nr === null) { nrValue = '—'; nrSub = '暂无计划中的提醒'; }
+        else if (nr.error) { nrValue = '暂不可用'; nrSub = '部分提醒计划加载失败，请刷新页面重试'; }
         else {
           nrValue = ST.fmtDateInTz(nr.fireTime);
           nrSub = ST.esc(nr.name) + ' · ' + ST.fmtTimeInTz(nr.fireTime);
@@ -348,13 +361,13 @@
           '<div class="ov-cell"><div class="ov-cell-label">7 天内到期</div>' +
             '<div class="ov-cell-value">' + soon + ' <span style="font-size: var(--fs-base); font-weight: 600;">项</span></div>' +
             '<div class="ov-cell-sub">' + (todayCount > 0 ? '其中今天到期 ' + todayCount + ' 项' : '未来 7 天内（含今天）') + '</div></div>' +
-          '<div class="ov-cell"><div class="ov-cell-label">本月预计支出</div>' +
+          '<div class="ov-cell"><div class="ov-cell-label">月均预计支出</div>' +
             '<div class="ov-cell-value">' + estHTML + '</div>' +
             '<div class="ov-cell-sub">' + estSub + '</div></div>' +
           '<div class="ov-cell"><div class="ov-cell-label">活跃订阅</div>' +
             '<div class="ov-cell-value">' + act.length + ' <span style="font-size: var(--fs-base); font-weight: 600;">个</span></div>' +
             '<div class="ov-cell-sub">共 ' + state.subs.length + ' 个订阅' + (inactive > 0 ? ' · ' + inactive + ' 个已停用' : '') + '</div></div>' +
-          '<div class="ov-cell"><div class="ov-cell-label">下次提醒</div>' +
+          '<div class="ov-cell"><div class="ov-cell-label" title="根据规则、时区和发送时段估算；不包含去重、重复间隔及渠道状态">下次规则命中（预计）</div>' +
             '<div class="ov-cell-value ov-cell-value--sm">' + nrValue + '</div>' +
             '<div class="ov-cell-sub">' + nrSub + '</div></div>' +
           '</div></div>' +
@@ -365,6 +378,7 @@
       /* 下次提醒：逐订阅调后端 /next-reminder（后端 getNextFireTime 单一事实源） */
       function computeNextReminder() {
         var act = activeSubs();
+        var request = ++state.reminderRequest;
         if (act.length === 0) { state.nextReminder = null; renderBand(false); return; }
         var jobs = act.map(function(s) {
           return apiJson('/api/subscriptions/' + encodeURIComponent(s.id) + '/next-reminder')
@@ -372,9 +386,15 @@
               var nr = j && j.nextReminder;
               return (nr && nr.nextFireTime) ? { name: s.name, fireTime: nr.nextFireTime } : null;
             })
-            .catch(function() { return null; });
+            .catch(function() { return { error: true }; });
         });
         Promise.all(jobs).then(function(list) {
+          if (request !== state.reminderRequest) return;
+          if (list.some(function(x) { return x && x.error; })) {
+            state.nextReminder = { error: true };
+            renderBand(false);
+            return;
+          }
           var best = null;
           list.forEach(function(x) {
             if (x && (!best || Date.parse(x.fireTime) < Date.parse(best.fireTime))) best = x;
@@ -435,7 +455,7 @@
         var body = $('ov-recent-body');
         if (!body) return;
         if (!state.stats) {
-          setHTML(body, '<div class="st-skel st-skel--row"></div>', false);
+          setHTML(body, state.statsError ? blockErrorHTML(state.statsError, 'stats') : '<div class="st-skel st-skel--row"></div>', false);
           return;
         }
         var list = Array.isArray(state.stats.recentPayments) ? state.stats.recentPayments : [];
@@ -444,7 +464,7 @@
           return;
         }
         var html = '<div class="st-row-list">' + list.map(function(p) {
-          var meta = ST.fmtDateInTz(p.paymentDate) + (p.note ? ' · ' + ST.esc(p.note) : '');
+          var meta = ST.fmtDateInTz(p.paymentDate) + (p.note ? ' · ' + p.note : '');
           return '<div class="st-row"><div class="st-row-main"><div class="st-row-title">' + ST.esc(p.name) + '</div>' +
             '<div class="st-row-meta">' + ST.esc(meta) + '</div></div>' +
             '<div class="st-row-actions"><span class="ov-row-amount">' + ST.fmtMoney(p.amount, p.currency) + '</span></div></div>';
@@ -457,10 +477,10 @@
         var body = $('ov-health-body');
         if (!body) return;
         var unknown = h.tone === 'unknown';
-        var title = unknown ? '暂无调度记录' : h.label;
+        var title = h.label;
         var lines = [];
         if (unknown) {
-          lines.push('<div>调度器完成首次检查后，这里会显示提醒健康状态。</div>');
+          lines.push('<div>' + ST.esc(h.detail || '调度器完成首次检查后，这里会显示提醒健康状态。') + '</div>');
         } else {
           if (h.detail) lines.push('<div>' + ST.esc(h.detail) + '</div>');
           if (h.lastRunAt) {
@@ -478,9 +498,11 @@
           if (total > 0) {
             var okCount = notes.filter(function(n) { return n.status === 'success'; }).length;
             var rate = Math.round(okCount / total * 100);
-            lines.push('<div>近 7 天送达率：<strong>' + rate + '%</strong>（成功 ' + okCount + ' / 共 ' + total + ' 条）</div>');
-          } else {
+            lines.push('<div>近 7 天发送成功率（最多 200 条）：<strong>' + rate + '%</strong>（成功 ' + okCount + ' / 共 ' + total + ' 条）</div>');
+          } else if (notes) {
             lines.push('<div>近 7 天暂无发送记录</div>');
+          } else {
+            lines.push('<div>发送记录暂不可用 <a class="ov-health-link" href="/admin/notify-logs">查看活动 →</a></div>');
           }
           if (h.failedRecent > 0) {
             lines.push('<div>近 7 天有 <strong>' + h.failedRecent + ' 次</strong>发送失败 <a class="ov-health-link" href="/admin/notify-logs">查看活动 →</a></div>');
@@ -489,9 +511,9 @@
             lines.push('<div>配置不完整：' + ST.esc(h.incomplete.map(function(n) { return ST.channelLabel(n); }).join('、')) +
               ' <a class="ov-health-link" href="/admin/channels">去修复 →</a></div>');
           }
-          if (h.enabled && h.enabled.length === 0) {
-            lines.push('<div>尚未启用任何通知渠道 <a class="ov-health-link" href="/admin/channels">去配置 →</a></div>');
-          }
+        }
+        if (h.label !== '配置未加载' && h.enabled && h.enabled.length === 0) {
+          lines.push('<div>尚未启用任何通知渠道，提醒无法发送。<a class="ov-health-link" href="/admin/channels">去配置 →</a></div>');
         }
         var html = '<div class="ov-health-head">' +
           '<span class="st-health-dot st-health-dot--lg is-' + ST.esc(h.tone) + '"></span>' +
@@ -533,6 +555,7 @@
         return apiJson('/api/subscriptions').then(function(data) {
           state.subs = Array.isArray(data) ? data : [];
           state.zero = state.subs.length === 0;
+          if (state.zero) { state.reminderRequest++; state.nextReminder = undefined; }
           $('ov-empty').hidden = !state.zero;
           $('ov-blocks').hidden = state.zero;
           if (!state.zero) {
@@ -555,11 +578,13 @@
         return apiJson('/api/dashboard/stats').then(function(j) {
           if (!j || !j.success || !j.data) throw new Error((j && j.message) || '统计数据不可用');
           state.stats = j.data;
+          state.statsError = null;
           renderRecent(silent);
           renderExpense(silent);
         }).catch(function(err) {
           if (silent) return;
           state.stats = null;
+          state.statsError = err.message;
           setHTML($('ov-expense-body'), blockErrorHTML(err.message, 'stats'), false);
           setHTML($('ov-recent-body'),
             '<div class="st-alert st-alert--error"><i class="fas fa-exclamation-circle"></i><div class="ov-attn-text">最近支付加载失败：' + ST.esc(err.message) + '</div>' +
@@ -604,7 +629,10 @@
           var group = seg.getAttribute('data-seg-group');
           var value = seg.getAttribute('data-seg-value');
           var btns = document.querySelectorAll('[data-seg-group="' + group + '"]');
-          btns.forEach(function(b) { b.classList.toggle('is-active', b === seg); });
+          btns.forEach(function(b) {
+            b.classList.toggle('is-active', b === seg);
+            b.setAttribute('aria-pressed', b === seg ? 'true' : 'false');
+          });
           if (group === 'timeline') {
             state.timelineSeg = value;
             $('ov-timeline-body').hidden = value !== 'upcoming';
