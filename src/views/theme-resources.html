@@ -1,3 +1,4 @@
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
   /* ============================================================
      SubsTracker 设计系统 v3 ——「Craft / Apple 玻璃」语言 + App Shell 契约层
@@ -427,9 +428,15 @@
   .st-brand { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-1) var(--sp-2) var(--sp-4); }
   .st-brand-mark {
     width: 30px; height: 30px; border-radius: var(--radius-m); flex: none;
-    background: var(--accent); color: #fff;
+    background: linear-gradient(145deg, #1E90FF 0%, #0071E3 56%, #0055B8 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 2px 6px rgba(0, 113, 227, 0.22);
+    color: #fff;
     display: inline-flex; align-items: center; justify-content: center;
-    font-size: var(--fs-base); font-weight: 700;
+    overflow: hidden;
+  }
+  .st-brand-mark svg { width: 100%; height: 100%; display: block; }
+  html.dark .st-brand-mark {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 2px 8px rgba(41, 151, 255, 0.28);
   }
   .st-brand-name { font-size: var(--fs-lg); font-weight: 700; color: var(--text-main); letter-spacing: -0.01em; }
   .st-nav { display: flex; flex-direction: column; gap: 2px; }
@@ -1408,16 +1415,22 @@
         '<button type="button" class="st-icon-btn" data-st-theme title="切换主题" aria-label="切换主题"><i class="fas fa-moon"></i></button>';
       var logoutHtml =
         '<a class="st-icon-btn" href="/api/logout" title="退出登录" aria-label="退出登录"><i class="fas fa-sign-out-alt"></i></a>';
+      var brandSvg =
+        '<svg viewBox="1 1 30 30" fill="none" aria-hidden="true">' +
+          '<path d="M 17.7 8.0 A 5.4 4.25 0 1 0 15.2 16.0 A 5.4 4.25 0 1 1 12.7 24.0" stroke="#FFFFFF" stroke-width="2.7" stroke-linecap="round"/>' +
+          '<circle cx="22.5" cy="9.2" r="3.0" fill="#7CE8FF" fill-opacity="0.24"/>' +
+          '<circle cx="22.5" cy="9.2" r="1.9" fill="#8BE9FF"/>' +
+        '</svg>';
       mount.innerHTML =
         '<aside class="st-side">' +
-          '<div class="st-brand"><span class="st-brand-mark">S</span><span class="st-brand-name">SubsTracker</span></div>' +
+          '<div class="st-brand"><span class="st-brand-mark">' + brandSvg + '</span><span class="st-brand-name">SubsTracker</span></div>' +
           '<nav class="st-nav">' + navHtml + '</nav>' +
           '<div class="st-side-foot">' + healthHtml +
             '<div class="st-side-tools">' + themeBtn + logoutHtml + '</div>' +
           '</div>' +
         '</aside>' +
         '<header class="st-topbar">' +
-          '<div class="st-brand"><span class="st-brand-mark">S</span><span class="st-brand-name">SubsTracker</span></div>' +
+          '<div class="st-brand"><span class="st-brand-mark">' + brandSvg + '</span><span class="st-brand-name">SubsTracker</span></div>' +
           '<div class="st-topbar-tools">' + healthHtml + themeBtn + logoutHtml + '</div>' +
         '</header>' +
         '<nav class="st-tabbar">' + tabHtml + '</nav>';

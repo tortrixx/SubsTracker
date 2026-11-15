@@ -29,4 +29,10 @@ describe('theme-resources String.replace safety & shell accessibility', () => {
   it('marks active navigation items with aria-current="page"', () => {
     expect(themeResources).toContain('aria-current="page"');
   });
+
+  it('registers the SVG favicon once and renders the SVG brand mark in shell', () => {
+    const matches = themeResources.match(/href="\/favicon\.svg"/g) || [];
+    expect(matches).toHaveLength(1);
+    expect(themeResources).toContain('<span class="st-brand-mark">\' + brandSvg + \'</span>');
+  });
 });
