@@ -4,7 +4,7 @@
  * 接口：MarkdownV2 + 失败时降级纯文本兜底。
  * 关键修复（#81）：订阅名含 `_*` 等特殊字符时不再炸。
  */
-import { escapeMarkdownV2, ok, fail, errorMessage } from './channel.js';
+import { escapeMarkdownV2, ok, fail, errorMessage, fetchWithTimeout, redactSecrets } from './channel.js';
 import type { Channel } from './channel.js';
 import type { AppConfig } from '../../data/config.js';
 
@@ -49,7 +49,7 @@ export const telegramChannel: Channel = {
     const escaped = escapeMarkdownV2(fullText);
 
     try {
-      const r = await fetch(url, {
+      const r = await fetchWithTimeout(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildSendBody(config, escaped, 'MarkdownV2'))
@@ -60,7 +60,7 @@ export const telegramChannel: Channel = {
 
       // 兜底：MarkdownV2 仍解析失败时降级纯文本
       if (result.description && /parse entities/i.test(result.description)) {
-        const r2 = await fetch(url, {
+        const r2 = await fetchWithTimeout(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(buildSendBody(config, fullText))
@@ -73,7 +73,7 @@ export const telegramChannel: Channel = {
 
       return fail('telegram', `Telegram 拒绝: ${result.description || '未知'}`, result);
     } catch (err) {
-      return fail('telegram', errorMessage(err));
+      return fail('telegram', redactSecrets(errorMessage(err), config.TG_BOT_TOKEN));
     }
   },
 

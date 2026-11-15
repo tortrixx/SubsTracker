@@ -1,7 +1,7 @@
 /**
  * Gotify 通知渠道（自托管）
  */
-import { ok, fail, errorMessage, stripMarkdown } from './channel.js';
+import { ok, fail, errorMessage, stripMarkdown, fetchWithTimeout, isSafeHttpUrl, redactSecrets } from './channel.js';
 import type { Channel } from './channel.js';
 import type { AppConfig } from '../../data/config.js';
 
@@ -10,6 +10,7 @@ export const gotifyChannel: Channel = {
 
   validateConfig(config) {
     if (!config.GOTIFY_SERVER_URL) return { ok: false, error: '缺少 GOTIFY_SERVER_URL' };
+    if (!isSafeHttpUrl(config.GOTIFY_SERVER_URL)) return { ok: false, error: 'GOTIFY_SERVER_URL 必须为 http/https 地址' };
     if (!config.GOTIFY_APP_TOKEN) return { ok: false, error: '缺少 GOTIFY_APP_TOKEN' };
     return { ok: true };
   },
@@ -24,7 +25,7 @@ export const gotifyChannel: Channel = {
       encodeURIComponent(String(config.GOTIFY_APP_TOKEN));
 
     try {
-      const r = await fetch(url, {
+      const r = await fetchWithTimeout(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -39,7 +40,7 @@ export const gotifyChannel: Channel = {
       }
       return ok('gotify');
     } catch (err) {
-      return fail('gotify', errorMessage(err));
+      return fail('gotify', redactSecrets(errorMessage(err), config.GOTIFY_APP_TOKEN));
     }
   },
 

@@ -10,7 +10,7 @@
  * - WPUSH_CHANNEL    可选推送渠道（wechat/app/sms/mail/webhook/dingtalk/feishu/wechat_work/clawbot/qqbot）
  * - WPUSH_TOPIC_CODE 可选 Topic 广播编码
  */
-import { ok, fail, errorMessage } from './channel.js';
+import { ok, fail, errorMessage, fetchWithTimeout } from './channel.js';
 import type { Channel } from './channel.js';
 import type { AppConfig } from '../../data/config.js';
 
@@ -41,7 +41,7 @@ export const wpushChannel: Channel = {
     }
 
     try {
-      const r = await fetch('https://api.wpush.cn/api/v1/send', {
+      const r = await fetchWithTimeout('https://api.wpush.cn/api/v1/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)

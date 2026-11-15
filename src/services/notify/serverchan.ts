@@ -1,7 +1,7 @@
 /**
  * Server酱 3 通知渠道
  */
-import { ok, fail, errorMessage } from './channel.js';
+import { ok, fail, errorMessage, fetchWithTimeout, redactSecrets } from './channel.js';
 import type { Channel } from './channel.js';
 import type { AppConfig } from '../../data/config.js';
 
@@ -24,7 +24,7 @@ export const serverChanChannel: Channel = {
     });
 
     try {
-      const r = await fetch(endpoint, {
+      const r = await fetchWithTimeout(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: body.toString()
@@ -34,7 +34,7 @@ export const serverChanChannel: Channel = {
         ? ok('serverchan', result)
         : fail('serverchan', `Server酱返回 code=${result?.code} ${result?.message || ''}`, result);
     } catch (err) {
-      return fail('serverchan', errorMessage(err));
+      return fail('serverchan', redactSecrets(errorMessage(err), config.SERVERCHAN_SENDKEY));
     }
   },
 

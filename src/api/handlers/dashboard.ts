@@ -18,7 +18,7 @@ import {
   getExpenseByCategory,
   type CurrencySubscription
 } from '../../core/currency.js';
-import { getCurrentTimeInTimezone, MS_PER_DAY } from '../../core/time.js';
+import { getCurrentTimeInTimezone, getDaysBetween } from '../../core/time.js';
 import * as schedulerLogsRepo from '../../data/scheduler-logs.repo.js';
 import type { SchedulerLogEntry } from '../../data/scheduler-logs.repo.js';
 import type { AppConfig } from '../../data/config.js';
@@ -72,10 +72,9 @@ async function handleDashboardStats(env: AppEnv, config: AppConfig): Promise<Res
 
     const activeSubscriptions = subscriptions.filter((s) => s.isActive);
     const now = getCurrentTimeInTimezone(timezone);
-    const sevenDaysLater = new Date(now.getTime() + 7 * MS_PER_DAY);
     const expiringSoon = activeSubscriptions.filter((s) => {
-      const expiryDate = new Date(s.expiryDate);
-      return expiryDate >= now && expiryDate <= sevenDaysLater;
+      const days = getDaysBetween(now, s.expiryDate, timezone);
+      return days >= 0 && days <= 7;
     }).length;
 
     return new Response(

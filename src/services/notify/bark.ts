@@ -5,7 +5,7 @@
  *   1. 标准：BARK_SERVER + BARK_DEVICE_KEY → POST {server}/push
  *   2. 自定义：BARK_SERVER 路径不为 / → POST {server}（已含 key 的完整 URL）
  */
-import { ok, fail, errorMessage, stripMarkdown } from './channel.js';
+import { ok, fail, errorMessage, stripMarkdown, fetchWithTimeout, isSafeHttpUrl, encodeBasicAuth, redactSecrets } from './channel.js';
 import type { Channel } from './channel.js';
 import type { AppConfig } from '../../data/config.js';
 
@@ -30,12 +30,17 @@ export const barkChannel: Channel = {
     let body: Record<string, any>;
     try {
       const parsed = new URL(serverUrl);
+      if (!isSafeHttpUrl(parsed.href)) {
+        return fail('bark', `BARK_SERVER 必须为 http/https URL: ${serverUrl}`);
+      }
       const isCustomUrl = parsed.pathname && parsed.pathname !== '/';
 
       // Extract Basic Auth credentials if present
       if (parsed.username) {
-        const credentials = `${decodeURIComponent(parsed.username)}:${decodeURIComponent(parsed.password || '')}`;
-        headers['Authorization'] = `Basic ${btoa(credentials)}`;
+        headers['Authorization'] = encodeBasicAuth(
+          decodeURIComponent(parsed.username),
+          decodeURIComponent(parsed.password || '')
+        );
         parsed.username = '';
         parsed.password = '';
       }
@@ -59,7 +64,7 @@ export const barkChannel: Channel = {
     if (config.BARK_IS_ARCHIVE === 'true') body.isArchive = 1;
 
     try {
-      const r = await fetch(url, {
+      const r = await fetchWithTimeout(url, {
         method: 'POST',
         headers,
         body: JSON.stringify(body)
@@ -69,7 +74,7 @@ export const barkChannel: Channel = {
         ? ok('bark', result)
         : fail('bark', `Bark 返回 code=${result?.code}`, result);
     } catch (err) {
-      return fail('bark', errorMessage(err));
+      return fail('bark', redactSecrets(errorMessage(err), config.BARK_DEVICE_KEY));
     }
   },
 

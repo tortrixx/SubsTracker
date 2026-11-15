@@ -387,6 +387,9 @@ function autoRenew(sub: any, now: Date, timezone: string, config: AppConfig): { 
   const mode = sub.subscriptionMode || 'cycle';
   const tz = timezone || 'UTC';
   let expiryDate = new Date(sub.expiryDate);
+  if (Number.isNaN(expiryDate.getTime())) return null;
+  const periodValue = Number(sub.periodValue) || 1;
+  if (!Number.isFinite(periodValue) || periodValue <= 0) return null;
   let periodsAdded = 0;
   const nowMidnight = getTimezoneMidnightTimestamp(now, tz);
 
@@ -403,7 +406,7 @@ function autoRenew(sub: any, now: Date, timezone: string, config: AppConfig): { 
     let lunar: LunarDate | LunarDateInput | null = lunarCalendar.solar2lunar(parts.year, parts.month, parts.day);
     while (getTimezoneMidnightTimestamp(expiryDate, tz) <= nowMidnight) {
       if (!lunar) break;
-      lunar = lunarBiz.addLunarPeriod(lunar, sub.periodValue, sub.periodUnit);
+      lunar = lunarBiz.addLunarPeriod(lunar, periodValue, sub.periodUnit);
       // 断言仅过类型层：lunar 为 null 时与原 JS 一样把 null 传下去（行为不变）
       const solar = lunarBiz.lunar2solar(lunar as LunarDateInput);
       if (!solar) break;
@@ -420,7 +423,7 @@ function autoRenew(sub: any, now: Date, timezone: string, config: AppConfig): { 
       }
       expiryDate = addCalendarPeriodInTimezone(
         expiryDate,
-        sub.periodValue || 1,
+        periodValue,
         sub.periodUnit || 'month',
         tz,
         { endOfMonth: !!sub.endOfMonth }
@@ -439,6 +442,7 @@ function autoRenew(sub: any, now: Date, timezone: string, config: AppConfig): { 
     id: crypto.randomUUID(),
     date: now.toISOString(),
     amount: sub.amount || 0,
+    currency: sub.currency || 'CNY',
     type: 'auto',
     note: `自动续订 (${mode === 'reset' ? '重置模式' : '接续模式'}${
       periodsAdded > 1 ? ', 补齐' + periodsAdded + '周期' : ''

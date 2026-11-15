@@ -1,5 +1,6 @@
 import { getConfig, setConfig, type AppConfig } from '../../data/config.js';
 import { validateReminderRules, type ReminderRule } from '../../data/reminders.repo.js';
+import { isValidTimezone } from '../../core/time.js';
 import { generateRandomSecret, sanitizeNotificationHours } from '../utils.js';
 import type { AppEnv } from '../../platform/storage/storage-port.js';
 
@@ -34,6 +35,10 @@ function buildSafeConfig(config: AppConfig): Record<string, unknown> {
     response[`${key}_CONFIGURED`] = isConfiguredSecret(safeView[key]);
     response[key] = '';
   });
+
+  // 只读安全提示：是否仍使用默认账号密码（不暴露任何密钥值）
+  response.IS_DEFAULT_CREDENTIALS =
+    config.ADMIN_USERNAME === 'admin' && config.ADMIN_PASSWORD === 'password';
 
   return response;
 }
@@ -78,19 +83,59 @@ function mergeSecretField(
   return trimmed;
 }
 
-async function handleGetConfig(env: AppEnv): Promise<Response> {
-  const config = await getConfig(env);
+async function handleGetConfig(env: AppEnv, preloadedConfig?: AppConfig): Promise<Response> {
+  const config = preloadedConfig || await getConfig(env);
   return new Response(
     JSON.stringify(buildSafeConfig(config)),
     { headers: { 'Content-Type': 'application/json' } }
   );
 }
 
-async function handleUpdateConfig(request: Request, env: AppEnv): Promise<Response> {
+const VALID_THEME_MODES = new Set(['light', 'dark', 'system']);
+const VALID_WEBHOOK_METHODS = new Set(['POST', 'GET', 'PUT', 'PATCH']);
+
+async function handleUpdateConfig(request: Request, env: AppEnv, preloadedConfig?: AppConfig): Promise<Response> {
   try {
-    const config = await getConfig(env);
-    const newConfig = (await request.json()) as Record<string, unknown>;
-    const clearSecretFields = normalizeClearSecretFields(newConfig?.CLEAR_SECRET_FIELDS);
+    const config = preloadedConfig || await getConfig(env);
+    const parsed: unknown = await request.json();
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return new Response(
+        JSON.stringify({ success: false, message: '请求体必须为 JSON 对象' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    const newConfig = parsed as Record<string, unknown>;
+    const clearSecretFields = normalizeClearSecretFields(newConfig.CLEAR_SECRET_FIELDS);
+
+    if (typeof newConfig.TIMEZONE === 'string' && newConfig.TIMEZONE.trim() && !isValidTimezone(newConfig.TIMEZONE.trim())) {
+      return new Response(
+        JSON.stringify({ success: false, message: `无效的时区标识: ${newConfig.TIMEZONE}` }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const appUrlRaw = typeof newConfig.APP_URL === 'string' ? newConfig.APP_URL.trim() : '';
+    if (appUrlRaw) {
+      try {
+        const u = new URL(appUrlRaw);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+          throw new Error('protocol');
+        }
+      } catch {
+        return new Response(
+          JSON.stringify({ success: false, message: 'APP_URL 必须为合法的 http/https 地址' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    const themeRaw = typeof newConfig.THEME_MODE === 'string' ? newConfig.THEME_MODE.trim() : '';
+    const themeMode = VALID_THEME_MODES.has(themeRaw) ? themeRaw : (config.THEME_MODE || 'system');
+
+    const methodRaw = typeof newConfig.WEBHOOK_METHOD === 'string' ? newConfig.WEBHOOK_METHOD.trim().toUpperCase() : '';
+    const webhookMethod = VALID_WEBHOOK_METHODS.has(methodRaw) ? methodRaw : (config.WEBHOOK_METHOD || 'POST');
+
+    const adminUserRaw = typeof newConfig.ADMIN_USERNAME === 'string' ? newConfig.ADMIN_USERNAME.trim() : '';
 
     // 全局默认提醒规则：字段缺失 = 不修改；null = 清除配置（回退内置预设）；
     // 数组（含空数组）= 新的默认模板，任一条非法则整请求 400 且不落库
@@ -113,8 +158,8 @@ async function handleUpdateConfig(request: Request, env: AppEnv): Promise<Respon
 
     const updatedConfig = {
       ...config,
-      ADMIN_USERNAME: newConfig.ADMIN_USERNAME || config.ADMIN_USERNAME,
-      THEME_MODE: newConfig.THEME_MODE || 'system',
+      ADMIN_USERNAME: adminUserRaw || config.ADMIN_USERNAME,
+      THEME_MODE: themeMode,
 
       TG_BOT_TOKEN: mergeSecretField(config, newConfig, 'TG_BOT_TOKEN', clearSecretFields),
       TG_CHAT_ID: newConfig.TG_CHAT_ID || '',
@@ -123,7 +168,7 @@ async function handleUpdateConfig(request: Request, env: AppEnv): Promise<Respon
       NOTIFYX_API_KEY: mergeSecretField(config, newConfig, 'NOTIFYX_API_KEY', clearSecretFields),
 
       WEBHOOK_URL: mergeSecretField(config, newConfig, 'WEBHOOK_URL', clearSecretFields),
-      WEBHOOK_METHOD: newConfig.WEBHOOK_METHOD || 'POST',
+      WEBHOOK_METHOD: webhookMethod,
       WEBHOOK_HEADERS: mergeSecretField(config, newConfig, 'WEBHOOK_HEADERS', clearSecretFields),
       WEBHOOK_TEMPLATE: newConfig.WEBHOOK_TEMPLATE || '',
 
@@ -138,7 +183,7 @@ async function handleUpdateConfig(request: Request, env: AppEnv): Promise<Respon
       EMAIL_FROM: newConfig.EMAIL_FROM || '',
       EMAIL_FROM_NAME: newConfig.EMAIL_FROM_NAME || '',
       EMAIL_TO: newConfig.EMAIL_TO || '',
-      APP_URL: (newConfig.APP_URL as string || '').trim(),
+      APP_URL: appUrlRaw,
 
       BARK_DEVICE_KEY: mergeSecretField(config, newConfig, 'BARK_DEVICE_KEY', clearSecretFields),
       BARK_SERVER: newConfig.BARK_SERVER || 'https://api.day.app',
@@ -161,8 +206,10 @@ async function handleUpdateConfig(request: Request, env: AppEnv): Promise<Respon
       WPUSH_CHANNEL: (newConfig.WPUSH_CHANNEL as string || '').trim(),
       WPUSH_TOPIC_CODE: (newConfig.WPUSH_TOPIC_CODE as string || '').trim(),
 
-      ENABLED_NOTIFIERS: newConfig.ENABLED_NOTIFIERS || ['notifyx'],
-      TIMEZONE: newConfig.TIMEZONE || config.TIMEZONE || 'UTC',
+      ENABLED_NOTIFIERS: Array.isArray(newConfig.ENABLED_NOTIFIERS)
+        ? newConfig.ENABLED_NOTIFIERS.filter((x): x is string => typeof x === 'string')
+        : (config.ENABLED_NOTIFIERS || ['notifyx']),
+      TIMEZONE: (typeof newConfig.TIMEZONE === 'string' && newConfig.TIMEZONE.trim()) || config.TIMEZONE || 'UTC',
       DEFAULT_REMINDER_RULES: defaultReminderRules,
 
       THIRD_PARTY_API_TOKEN: mergeSecretField(config, newConfig, 'THIRD_PARTY_API_TOKEN', clearSecretFields),

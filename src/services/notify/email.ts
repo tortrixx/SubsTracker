@@ -10,7 +10,7 @@
  * 回结构（parseContent），解析不出的块按普通段落兜底渲染，保证第三方 /api/notify
  * 与自定义消息等任意文本内容都可读。
  */
-import { ok, fail, errorMessage, stripMarkdown } from './channel.js';
+import { ok, fail, errorMessage, stripMarkdown, fetchWithTimeout } from './channel.js';
 import type { Channel, ChannelMetadata } from './channel.js';
 import type { AppConfig } from '../../data/config.js';
 import { formatLocalDate, formatTimeInTimezone, formatTimezoneDisplay } from '../../core/time.js';
@@ -316,7 +316,7 @@ export const emailChannel: Channel = {
       : config.EMAIL_FROM;
 
     try {
-      const r = await fetch('https://api.resend.com/emails', {
+      const r = await fetchWithTimeout('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${config.RESEND_API_KEY}`,

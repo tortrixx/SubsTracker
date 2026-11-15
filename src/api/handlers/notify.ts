@@ -1,4 +1,5 @@
-import { getConfig, type AppConfig } from '../../data/config.js';
+import { type AppConfig } from '../../data/config.js';
+import { timingSafeEqual } from '../../core/auth.js';
 import { sendNotificationToAllChannels } from '../../services/notify/index.js';
 import type { AppEnv } from '../../platform/storage/storage-port.js';
 
@@ -32,7 +33,7 @@ async function handleThirdPartyNotify(
     );
   }
 
-  if (!providedToken || providedToken !== expectedToken) {
+  if (!providedToken || !timingSafeEqual(providedToken, expectedToken)) {
     return new Response(
       JSON.stringify({ message: '访问未授权，令牌无效或缺失' }),
       { status: 401, headers: { 'Content-Type': 'application/json' } }
@@ -41,10 +42,26 @@ async function handleThirdPartyNotify(
 
   if (request.method !== 'POST') return null;
 
+  let body: ThirdPartyNotifyBody;
   try {
-    const body = (await request.json()) as ThirdPartyNotifyBody;
-    const title = body.title || '第三方通知';
-    const content = body.content || '';
+    const raw: unknown = await request.json();
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return new Response(
+        JSON.stringify({ message: '请求体必须为 JSON 对象' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    body = raw as ThirdPartyNotifyBody;
+  } catch {
+    return new Response(
+      JSON.stringify({ message: '请求体不是合法 JSON' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  try {
+    const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim() : '第三方通知';
+    const content = typeof body.content === 'string' ? body.content : '';
 
     if (!content) {
       return new Response(
@@ -53,7 +70,6 @@ async function handleThirdPartyNotify(
       );
     }
 
-    const config = await getConfig(env);
     const bodyTagsRaw = Array.isArray(body.tags)
       ? body.tags
       : (typeof body.tags === 'string' ? body.tags.split(/[,，\s]+/) : []);
@@ -61,7 +77,11 @@ async function handleThirdPartyNotify(
       ? bodyTagsRaw.filter(tag => typeof tag === 'string' && tag.trim().length > 0).map(tag => tag.trim())
       : [];
 
+    // 传入 env / ruleId='thirdparty' 使第三方 API 触发也写入通知日志（与活动页筛选口径一致）
     await sendNotificationToAllChannels(title, content, config, '[第三方API]', {
+      env,
+      subId: 'thirdparty',
+      ruleId: 'thirdparty',
       metadata: { tags: bodyTags }
     });
 

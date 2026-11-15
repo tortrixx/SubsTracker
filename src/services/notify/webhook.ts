@@ -3,7 +3,7 @@
  *
  * 支持自定义请求方法、Header、消息模板（{{title}} / {{content}} / {{tags}} 等）。
  */
-import { ok, fail, errorMessage } from './channel.js';
+import { ok, fail, errorMessage, fetchWithTimeout, isSafeHttpUrl } from './channel.js';
 import type { Channel, ChannelMetadata, ChannelPayload } from './channel.js';
 import type { AppConfig } from '../../data/config.js';
 import { formatLocalDate } from '../../core/time.js';
@@ -69,6 +69,7 @@ export const webhookChannel: Channel = {
 
   validateConfig(config) {
     if (!config.WEBHOOK_URL) return { ok: false, error: '缺少 WEBHOOK_URL' };
+    if (!isSafeHttpUrl(config.WEBHOOK_URL)) return { ok: false, error: 'WEBHOOK_URL 必须为 http/https 地址' };
     return { ok: true };
   },
 
@@ -76,11 +77,18 @@ export const webhookChannel: Channel = {
     const v = webhookChannel.validateConfig(config);
     if (!v.ok) return fail('webhook', v.error || '配置无效');
 
-    let headers = { 'Content-Type': 'application/json' };
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (config.WEBHOOK_HEADERS) {
       try {
-        const customHeaders = JSON.parse(config.WEBHOOK_HEADERS);
-        headers = { ...headers, ...customHeaders };
+        const customHeaders = JSON.parse(config.WEBHOOK_HEADERS) as unknown;
+        if (customHeaders && typeof customHeaders === 'object' && !Array.isArray(customHeaders)) {
+          for (const [k, val] of Object.entries(customHeaders)) {
+            if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+            if (typeof val === 'string' || typeof val === 'number') {
+              headers[k] = String(val);
+            }
+          }
+        }
       } catch {
         console.warn('[Webhook] 自定义请求头格式错误，使用默认请求头');
       }
@@ -101,7 +109,7 @@ export const webhookChannel: Channel = {
     }
 
     try {
-      const r = await fetch(config.WEBHOOK_URL, {
+      const r = await fetchWithTimeout(config.WEBHOOK_URL, {
         method: config.WEBHOOK_METHOD || 'POST',
         headers,
         body: JSON.stringify(requestBody)
