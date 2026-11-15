@@ -375,33 +375,25 @@
         setHTML(block, html, fade);
       }
 
-      /* 下次提醒：逐订阅调后端 /next-reminder（后端 getNextFireTime 单一事实源） */
+      /* 下次提醒：单次批量请求后端 /next-reminders（消除 N+1 订阅规则请求瀑布流） */
       function computeNextReminder() {
         var act = activeSubs();
         var request = ++state.reminderRequest;
         if (act.length === 0) { state.nextReminder = null; renderBand(false); return; }
-        var jobs = act.map(function(s) {
-          return apiJson('/api/subscriptions/' + encodeURIComponent(s.id) + '/next-reminder')
-            .then(function(j) {
-              var nr = j && j.nextReminder;
-              return (nr && nr.nextFireTime) ? { name: s.name, fireTime: nr.nextFireTime } : null;
-            })
-            .catch(function() { return { error: true }; });
-        });
-        Promise.all(jobs).then(function(list) {
-          if (request !== state.reminderRequest) return;
-          if (list.some(function(x) { return x && x.error; })) {
+        apiJson('/api/subscriptions/next-reminders')
+          .then(function(j) {
+            if (request !== state.reminderRequest) return;
+            var nr = j && j.nextReminder;
+            state.nextReminder = (nr && nr.nextFireTime)
+              ? { name: nr.subName, fireTime: nr.nextFireTime }
+              : null;
+            renderBand(false);
+          })
+          .catch(function() {
+            if (request !== state.reminderRequest) return;
             state.nextReminder = { error: true };
             renderBand(false);
-            return;
-          }
-          var best = null;
-          list.forEach(function(x) {
-            if (x && (!best || Date.parse(x.fireTime) < Date.parse(best.fireTime))) best = x;
           });
-          state.nextReminder = best;
-          renderBand(false);
-        });
       }
 
       /* ---------- 时间线 ---------- */
@@ -592,15 +584,12 @@
         });
       }
 
-      function loadHealth(silent) {
-        var since = new Date(Date.now() - 7 * 86400000).toISOString();
-        return Promise.all([
-          ST.health(),
-          apiJson('/api/scheduler-logs?limit=3').then(function(j) { return (j && j.logs) || []; }).catch(function() { return null; }),
-          apiJson('/api/notification-logs?since=' + encodeURIComponent(since) + '&limit=200').then(function(j) { return (j && j.logs) || []; }).catch(function() { return null; })
-        ]).then(function(res) {
-          state.health = res[0];
-          renderHealth(res[0], res[1], res[2], silent);
+      function loadHealth(silent, force) {
+        return ST.health(!!(silent || force)).then(function(h) {
+          state.health = h;
+          var recentSched = Array.isArray(h && h.sched) ? h.sched.slice(0, 3) : null;
+          var recentNotes = Array.isArray(h && h.notes) ? h.notes : null;
+          renderHealth(h, recentSched, recentNotes, silent);
           renderAttention(silent);
         }).catch(function(err) {
           if (silent) return;
@@ -621,7 +610,7 @@
           var key = retry.getAttribute('data-retry');
           if (key === 'subs') loadSubs(false);
           else if (key === 'stats') loadStats(false);
-          else if (key === 'health') loadHealth(false);
+          else if (key === 'health') loadHealth(false, true);
           return;
         }
         var seg = t.closest('[data-seg-group]');
