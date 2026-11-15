@@ -120,7 +120,7 @@ async function handleDebug(request: Request, env: AppEnv): Promise<Response> {
     <h3>提示</h3>
     <p>1. 如果时区诊断中"当前小时"与你预期不符，请检查配置中的 <code>TIMEZONE</code> 是否与你所在地匹配。</p>
     <p>2. 本版本 <code>NOTIFICATION_HOURS</code> <strong>按你配置的时区</strong>解释（不再是 UTC）。例如想让北京时间 8 点收到通知，<code>TIMEZONE=Asia/Shanghai</code> 时填 <code>08</code>。</p>
-    <p>3. 详细发送记录请前往后台"通知历史"页（后续版本提供）。</p>
+    <p>3. 详细发送记录与调度历史请前往 <a href="/admin/notify-logs">活动日志</a> 查看。</p>
     <p>4. <a href="/admin">返回管理后台</a></p>
     <p>5. <a href="/debug?export=sched_logs&limit=50">📥 导出最近 50 条调度执行日志（JSON）</a></p>
   </div>

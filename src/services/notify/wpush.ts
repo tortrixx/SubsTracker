@@ -12,7 +12,6 @@
  */
 import { ok, fail, errorMessage, fetchWithTimeout } from './channel.js';
 import type { Channel } from './channel.js';
-import type { AppConfig } from '../../data/config.js';
 
 export const wpushChannel: Channel = {
   name: 'wpush',
@@ -66,10 +65,3 @@ export const wpushChannel: Channel = {
     );
   }
 };
-
-/** @deprecated 旧版兼容函数 */
-export async function sendWPushNotification(title: string, content: string, config: AppConfig): Promise<boolean> {
-  const r = await wpushChannel.send({ title, content }, config);
-  if (!r.success) console.error('[WPUSH]', r.error);
-  return r.success;
-}

@@ -7,9 +7,9 @@ import channelsPageHtml from './channelsPage.html';
 import dashboardPageHtml from './dashboardPage.html';
 import notifyLogsPageHtml from './notifyLogsPage.html';
 
-// themeResources 需要注入到每个页面模板中
+// themeResources 需要注入到每个页面模板中；使用函数替换避免 $' / $$ 替换陷阱
 function injectTheme(html: string): string {
-  return html.replace(/\$\{themeResources\}/g, themeResourcesHtml);
+  return html.replace(/\$\{themeResources\}/g, () => themeResourcesHtml);
 }
 
 const loginPage = injectTheme(loginPageHtml);

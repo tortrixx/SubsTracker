@@ -3,7 +3,6 @@
  */
 import { ok, fail, errorMessage, fetchWithTimeout, redactSecrets } from './channel.js';
 import type { Channel } from './channel.js';
-import type { AppConfig } from '../../data/config.js';
 
 export const notifyxChannel: Channel = {
   name: 'notifyx',
@@ -46,12 +45,3 @@ export const notifyxChannel: Channel = {
     );
   }
 };
-
-/** @deprecated 旧版兼容函数 */
-export async function sendNotifyXNotification(title: string, content: string, _description: unknown, config: AppConfig): Promise<boolean> {
-  // 早期接口签名带一个 description 参数；新接口已弃用此字段
-  void _description;
-  const r = await notifyxChannel.send({ title, content }, config);
-  if (!r.success) console.error('[NotifyX]', r.error);
-  return r.success;
-}

@@ -9,19 +9,12 @@ async function handleAdminRequest(request: Request, env: AppEnv): Promise<Respon
     const url = new URL(request.url);
     const pathname = url.pathname;
 
-    console.log('[管理页面] 访问路径:', pathname);
-
     const token = getCookieValue(request.headers.get('Cookie'), 'token');
-    console.log('[管理页面] Token存在:', !!token);
-
     const config = await getConfig(env);
     // getConfig 保证 JWT_SECRET 必存在（缺失时生成并持久化）
     const user = token ? await verifyJWT(token, config.JWT_SECRET as string) : null;
 
-    console.log('[管理页面] 用户验证结果:', !!user);
-
     if (!user) {
-      console.log('[管理页面] 用户未登录，重定向到登录页面');
       return new Response('', {
         status: 302,
         headers: { 'Location': '/' }

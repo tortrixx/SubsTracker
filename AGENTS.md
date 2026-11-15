@@ -18,12 +18,13 @@ src/
   platform/node-html-loader.mjs   Lets .html views run under Node
   services/notify/         Channel implementations, dispatch, reminder engine
   services/scheduler.ts    The hourly tick
-  views/                   Five pages + theme-resources.html (shared layer)
-deploy/                    systemd unit + env example (Node runtime)
+  views/                   Six HTML views (5 console pages + loginPage) + theme-resources.html
+public/                    Static assets shared by both runtimes (favicon.svg, logo.svg, js/)
+deploy/                    systemd unit + env example (Node.js 24 runtime)
 docs/ARCHITECTURE.md       Architecture notes
 ```
 
-The five views are `dashboardPage.html`, `adminPage.html` (subscriptions),
+The five console views are `dashboardPage.html`, `adminPage.html` (subscriptions),
 `channelsPage.html`, `notifyLogsPage.html` (activity), `configPage.html`
 (settings), plus `loginPage.html`. All of them are built on
 `theme-resources.html`: design tokens (`.st-*` components) and the `window.ST`
@@ -55,11 +56,10 @@ runtime (`ST.loadConfig`, `ST.daysDiff`, `ST.health`, `ST.CHANNELS`, …).
   read/write handling in `src/api/handlers/config.ts`, and confirmation that
   `buildSafeConfig` passes it through (secrets don't). Add the key in only one
   place and saving settings will silently drop it.
-- **`pages.ts` injects `theme-resources.html` with `String.replace`.** Literal
-  `$` sequences in the replacement string (`$'`, `$$`, `$&`) are interpreted
-  as substitution patterns and will corrupt the page. In shared-layer code,
-  never emit a bare `$` followed by `'`/`` ` ``/`&`/`$` — write the dollar sign
-  as `\u0024` in JS strings.
+- **`pages.ts` injects `theme-resources.html`.** It uses a function replacer
+  (`() => themeResourcesHtml`) to avoid `String.replace` `$` substitution
+  patterns (`$'`, `$$`, `$&`), and a view regression test also keeps shared-layer
+  code free of bare `$'` / `$$` / `$&`. Write literal `$` in JS strings as `\u0024` if needed.
 - **`NOTIFICATION_HOURS` empty means unrestricted.** An empty array is a
   deliberate state ("send on any tick"), on the backend (scheduler) **and** in
   the channels-page picker. Any normalization must map "nothing selected" to
@@ -92,9 +92,9 @@ runtime (`ST.loadConfig`, `ST.daysDiff`, `ST.health`, `ST.CHANNELS`, …).
 After any change, all three must pass:
 
 ```bash
-npm test               # vitest — currently 279 tests, all green
-npx tsc --noEmit       # strict type check, 0 errors
-npm run build          # production build → dist/
+npm test               # vitest — 338 tests across 32 files
+npm run lint           # strict type check, 0 errors
+npm run build          # production build → dist/ (Node.js 24+)
 ```
 
 When touching storage code, also run `npm run check:storage` (conformance

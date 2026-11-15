@@ -3,7 +3,6 @@
  */
 import { ok, fail, errorMessage, fetchWithTimeout } from './channel.js';
 import type { Channel } from './channel.js';
-import type { AppConfig } from '../../data/config.js';
 
 export const pushplusChannel: Channel = {
   name: 'pushplus',
@@ -48,10 +47,3 @@ export const pushplusChannel: Channel = {
     );
   }
 };
-
-/** @deprecated 旧版兼容函数 */
-export async function sendPushPlusNotification(title: string, content: string, config: AppConfig): Promise<boolean> {
-  const r = await pushplusChannel.send({ title, content }, config);
-  if (!r.success) console.error('[PushPlus]', r.error);
-  return r.success;
-}

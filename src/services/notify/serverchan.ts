@@ -3,7 +3,6 @@
  */
 import { ok, fail, errorMessage, fetchWithTimeout, redactSecrets } from './channel.js';
 import type { Channel } from './channel.js';
-import type { AppConfig } from '../../data/config.js';
 
 export const serverChanChannel: Channel = {
   name: 'serverchan',
@@ -45,10 +44,3 @@ export const serverChanChannel: Channel = {
     );
   }
 };
-
-/** @deprecated 旧版兼容函数 */
-export async function sendServerChanNotification(title: string, content: string, config: AppConfig): Promise<boolean> {
-  const r = await serverChanChannel.send({ title, content }, config);
-  if (!r.success) console.error('[Server酱]', r.error);
-  return r.success;
-}

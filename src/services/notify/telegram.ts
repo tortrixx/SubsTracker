@@ -88,17 +88,4 @@ export const telegramChannel: Channel = {
   }
 };
 
-/**
- * 旧的导出函数：调用方传 `*title*\n\n...` 拼好的 message。
- *
- * @deprecated 新代码请用 telegramChannel.send
- */
-export async function sendTelegramNotification(message: string, config: AppConfig): Promise<boolean> {
-  // 旧调用方传入的 message 已经是组合好的 `*title*\n\ncontent`
-  // 这里把它整体作为 content，title 留空避免重复加包装
-  const r = await telegramChannel.send({ title: '', content: message }, config);
-  if (!r.success) console.error('[Telegram]', r.error);
-  return r.success;
-}
-
 export { escapeMarkdownV2 };

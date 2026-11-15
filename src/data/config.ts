@@ -1,4 +1,4 @@
-import { getKVJson, putKVJson } from './kv.js';
+import { putKVJson } from './kv.js';
 import type { AppEnv } from '../platform/storage/storage-port.js';
 import type { ReminderRule } from './reminders.repo.js';
 
