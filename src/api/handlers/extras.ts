@@ -21,7 +21,9 @@ import * as notifyLogsRepo from '../../data/notification-logs.repo.js';
 import * as schedLogsRepo from '../../data/scheduler-logs.repo.js';
 import { getCategories, addCategory } from '../../data/categories.js';
 import { nextMatchingCheck } from '../../services/notify/next-check.js';
-import { getConfig } from '../../data/config.js';
+import { ALL_CHANNELS } from '../../services/notify/dispatch.js';
+import { checkExpiringSubscriptions } from '../../services/scheduler.js';
+import { getConfig, type AppConfig } from '../../data/config.js';
 import type { AppEnv } from '../../platform/storage/storage-port.js';
 import type { ReminderRule } from '../../data/reminders.repo.js';
 import type { NotifyLogQuery } from '../../data/notification-logs.repo.js';
@@ -55,7 +57,12 @@ async function syncLegacyAfterRulesChange(env: AppEnv, subId: string, rules?: Re
  *
  * path 为已剥离 /api 前缀的路径
  */
-export async function handleExtraRoutes(request: Request, env: AppEnv, path: string): Promise<Response | null> {
+export async function handleExtraRoutes(
+  request: Request,
+  env: AppEnv,
+  path: string,
+  preloadedConfig?: AppConfig
+): Promise<Response | null> {
   const method = request.method;
 
   // /subscriptions/:id/reminders[/:ruleId]
@@ -63,6 +70,42 @@ export async function handleExtraRoutes(request: Request, env: AppEnv, path: str
   if (remMatch) {
     const [, subId, ruleId] = remMatch;
     return handleReminderRoute(request, env, method, subId, ruleId);
+  }
+
+  // 批量计算全部活跃订阅的下次规则命中时间（消除概览页 N+1 请求瀑布流）
+  if (path === '/subscriptions/next-reminders' && method === 'GET') {
+    const subRepo = await import('../../data/subscriptions.repo.js');
+    const subs = await subRepo.listAll(env);
+    const config = preloadedConfig || await getConfig(env);
+    const tz = config.TIMEZONE || 'UTC';
+    const hours = Array.isArray(config.NOTIFICATION_HOURS) ? config.NOTIFICATION_HOURS : [];
+    const now = new Date();
+    const activeSubs = subs.filter((s) => s.isActive);
+
+    const perSub = await Promise.all(
+      activeSubs.map(async (sub) => {
+        const rules = await remindersRepo.listForSubscription(env, sub.id);
+        const times = rules
+          .filter((r) => !(sub.autoRenew && r.type === 'after_expiry'))
+          .map((r) => ({
+            subId: sub.id,
+            subName: sub.name,
+            ruleId: r.id,
+            type: r.type,
+            value: r.value,
+            unit: r.unit,
+            nextFireTime: nextMatchingCheck(r, sub.expiryDate, tz, hours, now)
+          }))
+          .filter((t) => t.nextFireTime !== null)
+          .sort((a, b) => new Date(a.nextFireTime as string).getTime() - new Date(b.nextFireTime as string).getTime());
+        return times[0] || null;
+      })
+    );
+
+    const items = perSub
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+      .sort((a, b) => new Date(a.nextFireTime as string).getTime() - new Date(b.nextFireTime as string).getTime());
+    return json({ success: true, nextReminder: items[0] || null, items });
   }
 
   // /subscriptions/:id/next-reminder
@@ -73,7 +116,7 @@ export async function handleExtraRoutes(request: Request, env: AppEnv, path: str
     const sub = await getSubscription(subId, env);
     if (!sub) return json({ success: false, message: '订阅不存在' }, 404);
     const rules = await remindersRepo.listForSubscription(env, subId);
-    const config = await getConfig(env);
+    const config = preloadedConfig || await getConfig(env);
     const now = new Date();
     const times = rules
       .filter((r) => sub.isActive && !(sub.autoRenew && r.type === 'after_expiry'))
@@ -84,6 +127,12 @@ export async function handleExtraRoutes(request: Request, env: AppEnv, path: str
     return json({ success: true, nextReminder: times[0] || null, allUpcoming: times });
   }
 
+  // /notification-logs/latest-by-channel（一次聚合读取所有渠道最新记录）
+  if (path === '/notification-logs/latest-by-channel' && method === 'GET') {
+    const latest = await notifyLogsRepo.latestByChannel(env, Object.keys(ALL_CHANNELS));
+    return json({ success: true, latest });
+  }
+
   // /notification-logs
   if (path === '/notification-logs' && method === 'GET') {
     return handleNotifyLogsList(request, env);
@@ -92,6 +141,15 @@ export async function handleExtraRoutes(request: Request, env: AppEnv, path: str
   // /scheduler-logs
   if (path === '/scheduler-logs' && method === 'GET') {
     return handleSchedLogsList(request, env);
+  }
+
+  // /scheduler/run（手动触发一次调度检查，内部自带防重复去重保护）
+  if (path === '/scheduler/run' && method === 'POST') {
+    const log = await checkExpiringSubscriptions(env);
+    if (!log) {
+      return json({ success: false, message: '调度执行失败，请查看运行日志' }, 500);
+    }
+    return json({ success: log.status !== 'error', log });
   }
 
   // /version

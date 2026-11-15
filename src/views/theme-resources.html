@@ -105,7 +105,8 @@
     --dot-unknown: #64748B;
   }
 
-  /* === 基线：字体、背景（环境光渐变固定铺底）、过渡 === */
+  /* === 基线：字体、背景（环境光渐变固定铺底）、[hidden] 保护与过渡 === */
+  [hidden] { display: none !important; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
                  "Helvetica Neue", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
@@ -862,21 +863,6 @@
       }
     });
 
-    window.addEventListener('load', async () => {
-      if (window.location.pathname.startsWith('/admin')) {
-        try {
-          const res = await fetch('/api/config');
-          const config = await res.json();
-          if (config.THEME_MODE && config.THEME_MODE !== localStorage.getItem('themeMode')) {
-            localStorage.setItem('themeMode', config.THEME_MODE);
-            applyTheme(config.THEME_MODE);
-            const select = document.getElementById('themeModeSelect');
-            if (select) select.value = config.THEME_MODE;
-          }
-        } catch(e) {}
-      }
-    });
-
     window.updateAppTheme = function(mode) {
       localStorage.setItem('themeMode', mode);
       applyTheme(mode);
@@ -980,6 +966,35 @@
       var bar = document.getElementById('st-config-error');
       if (bar) bar.classList.remove('is-show');
     }
+    function renderDefaultCredBanner(cfg) {
+      try {
+        if (!cfg || cfg.IS_DEFAULT_CREDENTIALS !== true) return;
+        if (sessionStorage.getItem('st_dismiss_default_cred') === '1') return;
+      } catch (e) { return; }
+      var render = function() {
+        var existing = document.getElementById('st-default-cred-warn');
+        if (existing) return;
+        var host = document.querySelector('.st-tz-content') || document.querySelector('.st-main');
+        if (!host) return;
+        var bar = document.createElement('div');
+        bar.id = 'st-default-cred-warn';
+        bar.className = 'st-alert st-alert--warn';
+        bar.style.cssText = 'max-width:1120px;margin:0 auto var(--sp-3);align-items:center;justify-content:space-between;flex-wrap:wrap;';
+        bar.innerHTML =
+          '<span style="display:flex;align-items:center;gap:8px"><i class="fas fa-shield-alt"></i>' +
+          '<span>当前仍在使用默认管理员密码，建议尽快前往修改以确保账户安全。</span></span>' +
+          '<span style="display:flex;align-items:center;gap:8px">' +
+          '<a class="st-btn st-btn--primary st-btn--sm" href="/admin/config#grp-account">去修改</a>' +
+          '<button type="button" class="st-btn st-btn--ghost st-btn--sm" data-dismiss-cred>稍后提醒</button></span>';
+        bar.querySelector('[data-dismiss-cred]').addEventListener('click', function() {
+          try { sessionStorage.setItem('st_dismiss_default_cred', '1'); } catch (e) {}
+          bar.remove();
+        });
+        host.insertBefore(bar, host.firstChild);
+      };
+      if (document.body) render();
+      else document.addEventListener('DOMContentLoaded', render);
+    }
 
     ST.loadConfig = function(force) {
       if (cfgPromise && !force) return cfgPromise;
@@ -991,6 +1006,12 @@
         .then(function(cfg) {
           ST.config = cfg || {};
           ST.configError = null;
+          if (ST.config.THEME_MODE && ST.config.THEME_MODE !== localStorage.getItem('themeMode')) {
+            if (typeof window.updateAppTheme === 'function') window.updateAppTheme(ST.config.THEME_MODE);
+            var select = document.getElementById('themeModeSelect');
+            if (select) select.value = ST.config.THEME_MODE;
+          }
+          renderDefaultCredBanner(ST.config);
           document.documentElement.classList.remove('st-not-ready');
           hideConfigError();
           if (cfgResolve) { var res = cfgResolve; cfgResolve = null; cfgReject = null; res(ST.config); }
@@ -1136,11 +1157,17 @@
       return { state: state, enabled: enabled, missing: missing };
     };
 
-    /* ---------- 健康聚合（SPEC §2 三态；侧边栏点/概览健康卡/活动结论同源） ---------- */
-    ST.health = function() {
-      return ST.configReady.catch(function() { return null; }).then(function() {
+    /* ---------- 健康聚合（SPEC §2 三态；侧边栏点/概览健康卡/活动结论同源，带短期并发/结果复用） ---------- */
+    var healthInFlight = null;
+    var healthCacheAt = 0;
+    ST.health = function(force) {
+      if (!force && healthInFlight && (Date.now() - healthCacheAt) < 3000) {
+        return healthInFlight;
+      }
+      healthCacheAt = Date.now();
+      healthInFlight = ST.configReady.catch(function() { return null; }).then(function() {
         if (!ST.config) {
-          return { tone: 'unknown', label: '配置未加载', detail: '', incomplete: [], enabled: [], failedRecent: 0, lastRunAt: null, lastDueStatus: null };
+          return { tone: 'unknown', label: '配置未加载', detail: '', incomplete: [], enabled: [], failedRecent: 0, lastRunAt: null, lastDueStatus: null, sched: [], notes: [] };
         }
         var cfg = ST.config;
         var enabled = Array.isArray(cfg.ENABLED_NOTIFIERS) ? cfg.ENABLED_NOTIFIERS : [];
@@ -1155,7 +1182,9 @@
           .then(function(j) { if (!j || !Array.isArray(j.logs)) throw new Error('发送记录不可用'); return j.logs; })
           .catch(function() { return null; });
         return Promise.all([pSched, pNotes]).then(function(res) {
-          var unavailable = !res[0] || !res[1];
+          var schedOk = Array.isArray(res[0]);
+          var notesOk = Array.isArray(res[1]);
+          var unavailable = !schedOk || !notesOk;
           var sched = res[0] || [], notes = res[1] || [];
           var failedRecent = 0;
           for (var i = 0; i < notes.length; i++) if (notes[i].status === 'failed') failedRecent++;
@@ -1183,15 +1212,21 @@
                 (sched[0].status === 'skipped' ? '（正常跳过）' : '');
             }
           }
+          if (unavailable) {
+            healthInFlight = null;
+          }
           return {
             tone: tone, label: label, detail: detail,
             incomplete: incomplete, enabled: enabled,
             failedRecent: failedRecent,
             lastRunAt: sched.length ? sched[0].startedAt : null,
-            lastDueStatus: lastDue ? lastDue.status : null
+            lastDueStatus: lastDue ? lastDue.status : null,
+            sched: schedOk ? sched : null,
+            notes: notesOk ? notes : null
           };
         });
       });
+      return healthInFlight;
     };
 
     /* ---------- Toast（#st-toasts 独立容器，与旧 #toast-container 并行） ---------- */

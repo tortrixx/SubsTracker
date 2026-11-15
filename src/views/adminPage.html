@@ -141,7 +141,7 @@
           <div class="toolbar-row">
             <div class="search-box">
               <i class="fas fa-search"></i>
-              <input type="search" id="searchKeyword" class="st-input" placeholder="搜索名称、类型、分类或备注…" aria-label="搜索订阅">
+              <input type="search" id="searchKeyword" class="st-input" placeholder="搜索名称、类型、分类或备注…（按 / 快速定位）" aria-label="搜索订阅">
             </div>
             <select id="sortSelect" class="st-input sort-select" aria-label="排序方式">
               <option value="expiryAsc">到期日（近 → 远）</option>
@@ -2153,6 +2153,16 @@
         return;
       }
       $('tzName').textContent = ST.tz();
+      document.addEventListener('keydown', function (ev) {
+        if (ev.key !== '/' || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+        var el = document.activeElement;
+        var tag = el && el.tagName ? el.tagName.toLowerCase() : '';
+        if (tag === 'input' || tag === 'textarea' || tag === 'select' || (el && el.isContentEditable)) return;
+        if (document.querySelector('.st-drawer.is-open')) return;
+        ev.preventDefault();
+        var s = $('searchKeyword');
+        if (s) { s.focus(); s.select(); }
+      });
       initLoad();
     })();
   })();

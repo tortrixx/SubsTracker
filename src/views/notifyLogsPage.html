@@ -65,9 +65,14 @@
     <div class="act-wrap">
       <div class="act-head">
         <h1 class="act-title"><i class="fas fa-history"></i>活动</h1>
-        <button type="button" id="reloadBtn" class="st-btn st-btn--ghost st-btn--sm">
-          <i class="fas fa-sync"></i>刷新
-        </button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button type="button" id="runSchedBtn" class="st-btn st-btn--ghost st-btn--sm" title="立即执行一次到期与提醒规则检查（受防重复去重保护）">
+            <i class="fas fa-play"></i>立即检查
+          </button>
+          <button type="button" id="reloadBtn" class="st-btn st-btn--ghost st-btn--sm">
+            <i class="fas fa-sync"></i>刷新
+          </button>
+        </div>
       </div>
 
       <!-- 时区门禁骨架：config 就绪前显示，就绪后由 ST 自动切换 -->
@@ -739,6 +744,30 @@
         if (ST.configError) { location.reload(); return; }
         if (activeSeg === 'send') loadSend(true); else loadSched(true);
         ST.toast('已刷新');
+      });
+      $('runSchedBtn').addEventListener('click', async function () {
+        var btn = $('runSchedBtn');
+        if (btn.disabled) return;
+        btn.disabled = true;
+        var origHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>检查中…';
+        try {
+          var r = await fetch('/api/scheduler/run', { method: 'POST', credentials: 'same-origin' });
+          var j = await r.json().catch(function () { return {}; });
+          if (!r.ok) throw new Error(j.message || ('HTTP ' + r.status));
+          var log = j.log || {};
+          if (log.status === 'skipped') {
+            ST.toast('当前不在发送时段（' + (log.reason || '已记录并检查自动续订') + '）', { tone: 'warn', duration: 5000 });
+          } else {
+            ST.toast('检查完成：匹配 ' + (log.matchedCount || 0) + ' 项，发送 ' + (log.sentCount || 0) + ' 条');
+          }
+          await Promise.all([loadSched(true), loadSend(true)]);
+        } catch (err) {
+          ST.toast('检查失败：' + (err && err.message ? err.message : '请稍后重试'), { tone: 'error' });
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+        }
       });
 
       // 列表区事件委托：展开/收起、分页、空状态动作、互链

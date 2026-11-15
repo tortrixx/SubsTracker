@@ -265,6 +265,22 @@
       return '发送';
     }
     var lastByChannel = {};
+    async function fetchAllLast() {
+      try {
+        const res = await apiFetch('/api/notification-logs/latest-by-channel');
+        const j = await res.json();
+        const latest = (j && j.latest) || {};
+        ST.CHANNELS.forEach(function(def) {
+          lastByChannel[def.name] = latest[def.name] || null;
+          renderLastLine(def.name);
+        });
+      } catch (e) {
+        ST.CHANNELS.forEach(function(def) {
+          lastByChannel[def.name] = null;
+          renderLastLine(def.name);
+        });
+      }
+    }
     async function fetchLast(channel) {
       try {
         const res = await apiFetch('/api/notification-logs?channel=' + encodeURIComponent(channel) + '&limit=1');
@@ -643,6 +659,7 @@
           if (f.secret) {
             html += '<div class="secret-row" style="margin-top:2px"><span class="st-caption" data-secret-note="' + f.key + '"></span>' +
               '<span style="flex:1"></span>' +
+              (!f.textarea ? '<button type="button" class="st-btn st-btn--ghost st-btn--sm" data-reveal="' + f.key + '">显示</button>' : '') +
               '<button type="button" class="st-btn st-btn--ghost st-btn--sm" data-clear="' + f.key + '">清空</button></div>';
           }
         }
@@ -661,6 +678,12 @@
           if (input.value.trim()) drawer.clearSecrets.delete(f.key);
           refreshSecretState(f.key);
           markDrawerDirty();
+        });
+        var revealBtn = document.querySelector('[data-reveal="' + f.key + '"]');
+        if (revealBtn) revealBtn.addEventListener('click', function() {
+          var isPwd = input.type === 'password';
+          input.type = isPwd ? 'text' : 'password';
+          revealBtn.textContent = isPwd ? '隐藏' : '显示';
         });
         var clearBtn = document.querySelector('[data-clear="' + f.key + '"]');
         if (clearBtn) clearBtn.addEventListener('click', function() {
@@ -946,7 +969,7 @@
       renderHours();
       renderCards();
       refreshHealth();
-      ST.CHANNELS.forEach(function(def) { fetchLast(def.name); });
+      fetchAllLast();
       setInterval(updateHoursSummary, 30000);
       var open = new URLSearchParams(window.location.search).get('open');
       if (open && FIELD_DEFS[open]) openDrawer(open);
