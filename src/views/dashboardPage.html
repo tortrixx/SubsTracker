@@ -288,16 +288,31 @@
             var txt = '<strong>已过期 ' + overdue.length + ' 项</strong>' +
               (overdue.length === 1 ? ' · ' + ST.esc(overdue[0].name) : '') +
               (sum.length ? ' · 合计 ' + moneySumHTML(sum) : '');
+            var overdueHref = overdue.length > 1 ? '/admin?status=expired' : ('/admin?focus=' + encodeURIComponent(overdue[0].id));
             parts.push('<div class="st-alert st-alert--error"><i class="fas fa-exclamation-circle"></i>' +
               '<div class="ov-attn-text">' + txt + '</div>' +
-              '<a class="st-btn st-btn--sm ov-attn-act" href="/admin?focus=' + encodeURIComponent(overdue[0].id) + '">查看</a></div>');
+              '<a class="st-btn st-btn--sm ov-attn-act" href="' + overdueHref + '">查看</a></div>');
           }
           if (today.length > 0) {
             var txt2 = '<strong>今天到期 ' + today.length + ' 项</strong>' +
               (today.length === 1 ? ' · ' + ST.esc(today[0].name) : '');
+            var todayHref = today.length > 1 ? '/admin?status=soon' : ('/admin?focus=' + encodeURIComponent(today[0].id));
             parts.push('<div class="st-alert st-alert--warn"><i class="fas fa-bell"></i>' +
               '<div class="ov-attn-text">' + txt2 + '</div>' +
-              '<a class="st-btn st-btn--sm ov-attn-act" href="/admin?focus=' + encodeURIComponent(today[0].id) + '">查看</a></div>');
+              '<a class="st-btn st-btn--sm ov-attn-act" href="' + todayHref + '">查看</a></div>');
+          }
+          var trialsSoon = activeSubs().filter(function(s) {
+            if (String(s.customType || '').trim() !== '试用') return false;
+            var d = ST.daysDiff(s.expiryDate);
+            return isFinite(d) && d >= 0 && d <= 3;
+          });
+          if (trialsSoon.length > 0) {
+            var tTxt = '<strong>试用即将结束 ' + trialsSoon.length + ' 项</strong>' +
+              (trialsSoon.length === 1 ? ' · ' + ST.esc(trialsSoon[0].name) : '（3 天内到期）');
+            var trialHref = trialsSoon.length > 1 ? '/admin?status=trial' : ('/admin?focus=' + encodeURIComponent(trialsSoon[0].id));
+            parts.push('<div class="st-alert st-alert--info"><i class="fas fa-hourglass-half"></i>' +
+              '<div class="ov-attn-text">' + tTxt + '</div>' +
+              '<a class="st-btn st-btn--sm ov-attn-act" href="' + trialHref + '">处理</a></div>');
           }
         }
         var h = state.health;
@@ -375,24 +390,22 @@
         setHTML(block, html, fade);
       }
 
-      /* 下次提醒：单次批量请求后端 /next-reminders（消除 N+1 订阅规则请求瀑布流） */
+      /* 下次提醒：与订阅列表并行加载，消除串行等待（空状态自动回落为 null） */
       function computeNextReminder() {
-        var act = activeSubs();
         var request = ++state.reminderRequest;
-        if (act.length === 0) { state.nextReminder = null; renderBand(false); return; }
-        apiJson('/api/subscriptions/next-reminders')
+        return apiJson('/api/subscriptions/next-reminders')
           .then(function(j) {
-            if (request !== state.reminderRequest) return;
+            if (request !== state.reminderRequest || state.zero) return;
             var nr = j && j.nextReminder;
             state.nextReminder = (nr && nr.nextFireTime)
               ? { name: nr.subName, fireTime: nr.nextFireTime }
               : null;
-            renderBand(false);
+            if (state.subs) renderBand(false);
           })
           .catch(function() {
-            if (request !== state.reminderRequest) return;
+            if (request !== state.reminderRequest || state.zero) return;
             state.nextReminder = { error: true };
-            renderBand(false);
+            if (state.subs) renderBand(false);
           });
       }
 
@@ -427,12 +440,13 @@
         });
         var html = groups.map(function(g) {
           var rows = g.rows.map(function(s) {
+            var isTrial = String(s.customType || '').trim() === '试用';
             var meta = s.customType ? '<div class="st-row-meta">' + ST.esc(s.customType) + '</div>' : '';
             var amount = (s.amount !== null && s.amount !== undefined && s.amount !== '')
               ? '<span class="ov-row-amount">' + ST.fmtMoney(s.amount, s.currency) + '</span>'
               : '<span class="st-caption">未设置金额</span>';
             return '<a class="st-row" href="/admin?focus=' + encodeURIComponent(s.id) + '">' +
-              '<div class="st-row-main"><div class="st-row-title">' + ST.esc(s.name) + '</div>' + meta + '</div>' +
+              '<div class="st-row-main"><div class="st-row-title">' + ST.esc(s.name) + (isTrial ? ' ' + ST.badge('info', '试用') : '') + '</div>' + meta + '</div>' +
               '<div class="st-row-actions">' + ST.chip(s) + '</div>' +
               '<div class="st-row-actions">' + amount + '</div></a>';
           }).join('');
@@ -535,10 +549,18 @@
           setHTML(body, html, fade);
         }
         var foot = $('ov-expense-foot');
-        if (foot && state.stats.monthlyExpense && state.stats.yearlyExpense) {
-          foot.innerHTML = '按本年支付记录折合 CNY 统计 · 本月已支出 ' +
-            ST.fmtMoney(state.stats.monthlyExpense.amount, 'CNY') +
-            ' · 本年月均支出 ' + ST.fmtMoney(state.stats.yearlyExpense.monthlyAverage, 'CNY');
+        if (foot) {
+          var mAmt = state.stats.monthlyExpense ? Number(state.stats.monthlyExpense.amount) || 0 : 0;
+          var yAvg = state.stats.yearlyExpense ? Number(state.stats.yearlyExpense.monthlyAverage) || 0 : 0;
+          if (list.length === 0 && mAmt === 0 && yAvg === 0) {
+            foot.textContent = '';
+            foot.hidden = true;
+          } else if (state.stats.monthlyExpense && state.stats.yearlyExpense) {
+            foot.hidden = false;
+            foot.innerHTML = '按本年支付记录折合 CNY 统计 · 本月已支出 ' +
+              ST.fmtMoney(state.stats.monthlyExpense.amount, 'CNY') +
+              ' · 本年月均支出 ' + ST.fmtMoney(state.stats.yearlyExpense.monthlyAverage, 'CNY');
+          }
         }
       }
 
@@ -547,14 +569,13 @@
         return apiJson('/api/subscriptions').then(function(data) {
           state.subs = Array.isArray(data) ? data : [];
           state.zero = state.subs.length === 0;
-          if (state.zero) { state.reminderRequest++; state.nextReminder = undefined; }
+          if (state.zero) { state.reminderRequest++; state.nextReminder = null; }
           $('ov-empty').hidden = !state.zero;
           $('ov-blocks').hidden = state.zero;
           if (!state.zero) {
             renderAttention(silent);
             renderBand(silent);
             renderTimeline(silent);
-            computeNextReminder();
           }
         }).catch(function(err) {
           if (silent) return; // 静默刷新失败：保留已显示数据
@@ -598,7 +619,7 @@
       }
 
       function loadAll(silent) {
-        return Promise.all([loadSubs(silent), loadStats(silent), loadHealth(silent)]);
+        return Promise.all([loadSubs(silent), loadStats(silent), loadHealth(silent), computeNextReminder()]);
       }
 
       /* ---------- 交互：分段切换 + 区块重试（事件委托） ---------- */

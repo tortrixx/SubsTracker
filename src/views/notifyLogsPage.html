@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>活动 - 订阅管理系统</title>
+  <title>活动日志 - SubsTracker</title>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
   ${themeResources}
@@ -214,6 +214,7 @@
     /* ───────── 通用工具 ───────── */
     function apiGet(path) {
       return fetch(path, { credentials: 'same-origin' }).then(function (r) {
+        if (r.status === 401) { window.location.href = '/'; throw new Error('AUTH_EXPIRED'); }
         if (!r.ok) throw new Error('请求失败（HTTP ' + r.status + '）');
         return r.json();
       });
@@ -413,12 +414,17 @@
       h += '</div>';
       return h;
     }
+    function sourceBadge(l) {
+      if (l.ruleId === 'test') return ' ' + ST.badge('info', '渠道测试');
+      if (l.ruleId === 'manual-test') return ' ' + ST.badge('info', '手动测试');
+      if (l.ruleId === 'thirdparty') return ' ' + ST.badge('neutral', '第三方');
+      return '';
+    }
     function sendRowHtml(l) {
-      var isTest = l.ruleId === 'test';
       var open = !!expandedSend[l.key];
       var h = '<div class="act-item">';
       h += '<div class="st-row"><div class="st-row-main">';
-      h += '<div class="st-row-title">' + ST.esc(subNameFor(l)) + (isTest ? ' ' + ST.badge('info', '测试') : '') + '</div>';
+      h += '<div class="st-row-title">' + ST.esc(subNameFor(l)) + sourceBadge(l) + '</div>';
       h += '<div class="st-row-meta">' + ST.esc(ST.fmtDateTimeInTz(l.timestamp)) + ' · ' + channelBadge(l.channel) +
         ' · <span data-rulecell="' + ST.esc(l.key) + '">' + ST.esc(ruleSummaryFor(l)) + '</span></div>';
       if (l.title) h += '<div class="st-row-meta act-title-line">' + ST.esc(l.title) + '</div>';
@@ -634,12 +640,20 @@
       els.paneSched.hidden = seg !== 'sched';
     }
     function gotoRunSends(entry) {
+      send.channels = {};
+      send.status = 'all';
+      send.subId = '';
+      send.range = 'all';
+      send.rule = '';
+      if (els.filterSub) els.filterSub.value = '';
+      syncChannelChips();
+      syncStatusChips();
+      syncRangeSeg();
       send.runWindow = {
         since: entry.startedAt,
         until: entry.finishedAt || entry.startedAt,
         label: ST.fmtDateTimeInTz(entry.startedAt) + ' 的调度'
       };
-      send.rule = '';
       setSeg('send');
       loadSend(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -753,14 +767,18 @@
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>检查中…';
         try {
           var r = await fetch('/api/scheduler/run', { method: 'POST', credentials: 'same-origin' });
+          if (r.status === 401) { window.location.href = '/'; return; }
           var j = await r.json().catch(function () { return {}; });
           if (!r.ok) throw new Error(j.message || ('HTTP ' + r.status));
           var log = j.log || {};
-          if (log.status === 'skipped') {
+          if (log.status === 'skipped' && !log.inWindow) {
             ST.toast('当前不在发送时段（' + (log.reason || '已记录并检查自动续订') + '）', { tone: 'warn', duration: 5000 });
+          } else if (log.status === 'skipped' && (log.matchedCount || 0) > 0) {
+            ST.toast('检查完成：匹配 ' + log.matchedCount + ' 项（本时段已发送过，跳过重复）', { duration: 4500 });
           } else {
             ST.toast('检查完成：匹配 ' + (log.matchedCount || 0) + ' 项，发送 ' + (log.sentCount || 0) + ' 条');
           }
+          ST.health(true).catch(function () {});
           await Promise.all([loadSched(true), loadSend(true)]);
         } catch (err) {
           ST.toast('检查失败：' + (err && err.message ? err.message : '请稍后重试'), { tone: 'error' });

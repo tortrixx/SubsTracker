@@ -92,6 +92,18 @@
     .rule-err { flex-basis: 100%; font-size: var(--fs-xs); color: var(--tone-danger-text); display: none; }
     .rule-row.is-error .rule-err { display: block; }
     .rules-empty { font-size: var(--fs-sm); color: var(--text-muted); border: 1px dashed var(--hairline-strong); border-radius: var(--radius-m); padding: var(--sp-3); line-height: 1.6; }
+    .rule-preview {
+      margin-top: var(--sp-3); padding: var(--sp-3);
+      border-radius: var(--radius-m); border: 1px solid var(--hairline);
+      background: var(--surface-tint); font-size: var(--fs-sm); line-height: 1.55;
+      color: var(--text-main);
+    }
+    .rule-preview-head { font-weight: 700; display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+    .rule-preview-meta { font-size: var(--fs-xs); color: var(--text-muted); margin-top: 4px; }
+    .rule-preview-list { margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--hairline); display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-xs); }
+    .rule-preview-item { display: flex; justify-content: space-between; gap: var(--sp-2); color: var(--text-muted); }
+    .rule-preview-item strong { color: var(--text-main); font-weight: 600; }
+    .st-row .expand-btn { flex: none; }
     /* 支付记录 */
     .pay-item { display: flex; gap: var(--sp-3); align-items: flex-start; border: 1px solid var(--hairline); border-radius: var(--radius-m); padding: var(--sp-3); margin-bottom: var(--sp-2); background: var(--surface); }
     .pay-item .p-main { flex: 1; min-width: 0; }
@@ -305,6 +317,7 @@
               <button type="button" class="st-btn st-btn--ghost st-btn--sm" id="reminderRulesAddBtn"><i class="fas fa-plus"></i>添加规则</button>
             </div>
             <div id="reminderRulesContainer"></div>
+            <div class="rule-preview" id="rulePreviewBox" role="status" aria-live="polite" hidden></div>
             <p class="st-field-hint" style="margin-top: var(--sp-2);">例如「提前 7 天」只在到期前第 7 天提醒一次。想在其他日期也收到提醒，请添加规则；没有规则则不会提醒。</p>
             </details>
           </div>
@@ -516,8 +529,9 @@
         return t.getUTCFullYear() + '-' + String(t.getUTCMonth() + 1).padStart(2, '0') + '-' + String(t.getUTCDate()).padStart(2, '0');
       }
       let totalMonths = (unit === 'year') ? v * 12 : v;
-      let ny = y + Math.floor((mo - 1 + totalMonths) / 12);
-      let nm = ((mo - 1 + totalMonths) % 12) + 1;
+      let sumMo = mo - 1 + totalMonths;
+      let ny = y + Math.floor(sumMo / 12);
+      let nm = ((sumMo % 12) + 12) % 12 + 1;
       const lastDay = new Date(Date.UTC(ny, nm, 0)).getUTCDate();
       const nd = Math.min(d, lastDay);
       return ny + '-' + String(nm).padStart(2, '0') + '-' + String(nd).padStart(2, '0');
@@ -741,8 +755,8 @@
       const lunarOn = listShowLunar.checked;
       const lunarTxt = lunarOn ? lunarTextOf(sub.expiryDate) : '';
       let html = '<div class="sub-wrap' + (expanded ? ' is-open' : '') + (focusId === sub.id ? ' is-focus' : '') + '" data-subwrap="' + ST.esc(sub.id) + '">' +
-        '<div class="st-row" data-act="expand" data-id="' + ST.esc(sub.id) + '" role="button" tabindex="0" aria-expanded="' + expanded + '">' +
-          '<div class="st-row-main">' +
+        '<div class="st-row">' +
+          '<div class="st-row-main" data-act="expand" data-id="' + ST.esc(sub.id) + '">' +
             '<div class="st-row-title">' + ST.esc(sub.name) + '<span class="row-badges">' + st.badge + '</span></div>' +
             '<div class="st-row-meta">' + ST.esc(typeText) + (period ? ' · ' + ST.esc(period) : '') + ' · ' + modeText + ' · ' + money + '</div>' +
             '<div class="st-row-meta">到期 ' + ST.esc(ST.fmtDateInTz(sub.expiryDate)) +
@@ -752,7 +766,7 @@
           '<div class="st-row-actions">' +
             '<button type="button" class="st-btn st-btn--ghost tap" data-act="edit" data-id="' + ST.esc(sub.id) + '">编辑</button>' +
             '<button type="button" class="st-icon-btn" data-act="menu" data-id="' + ST.esc(sub.id) + '" aria-label="更多操作" aria-haspopup="true" aria-expanded="false"><i class="fas fa-ellipsis-v"></i></button>' +
-            '<i class="fas fa-chevron-down chev"></i>' +
+            '<button type="button" class="st-icon-btn expand-btn" data-act="expand" data-id="' + ST.esc(sub.id) + '" aria-expanded="' + expanded + '" aria-label="' + (expanded ? '收起详情' : '展开详情') + '"><i class="fas fa-chevron-down chev"></i></button>' +
           '</div>' +
         '</div>';
       if (expanded) html += detailHtml(sub);
@@ -798,6 +812,7 @@
         '<div class="detail-sec"><div class="k">提醒规则</div>' + rulesHtml + '</div>' +
         (sub.notes ? '<div class="detail-sec"><div class="k">备注</div><div class="v" style="font-size: var(--fs-sm); line-height: 1.6; white-space: pre-wrap; word-break: break-word;">' + ST.esc(sub.notes) + '</div></div>' : '') +
         '<div class="detail-actions">' +
+          '<button type="button" class="st-btn st-btn--primary tap" data-act="renewCustom" data-id="' + ST.esc(sub.id) + '"><i class="fas fa-sync-alt"></i>续订</button>' +
           '<button type="button" class="st-btn st-btn--ghost tap" data-act="payments" data-id="' + ST.esc(sub.id) + '"><i class="fas fa-receipt"></i>支付历史</button>' +
           '<button type="button" class="st-btn st-btn--ghost tap" data-act="test" data-id="' + ST.esc(sub.id) + '"><i class="fas fa-paper-plane"></i>测试通知</button>' +
           '<button type="button" class="st-btn st-btn--ghost tap" data-act="edit" data-id="' + ST.esc(sub.id) + '"><i class="fas fa-pen"></i>编辑</button>' +
@@ -913,6 +928,8 @@
       menu.style.left = Math.max(8, Math.min(r.right - 264, window.innerWidth - 272)) + 'px';
       menu.style.width = '264px';
       $('toolbarMenuBtn').setAttribute('aria-expanded', 'true');
+      const first = menu.querySelector('select, input, button, a');
+      if (first) first.focus();
     }
     document.addEventListener('click', function (e) {
       if (toolbarMenuOpen && !$('toolbarMenu').contains(e.target) && e.target !== $('toolbarMenuBtn') && !$('toolbarMenuBtn').contains(e.target)) closeToolbarMenu();
@@ -1132,10 +1149,80 @@
       updateRulesSummary();
       updateSaveEnabled();
       refreshDirtyDot();
+      scheduleRulePreview();
     }
     function updateRulesSummary() {
       const enabled = rulesState.model.filter(function (r) { return r.isEnabled !== false; });
       $('rulesSummary').textContent = rulesState.status === 'loading' ? '正在加载' : rulesState.status === 'error' ? '加载失败' : enabled.length ? ST.rulesSummary(enabled) : '不提醒';
+    }
+    let previewTimer = null;
+    let previewRequestId = 0;
+    function scheduleRulePreview() {
+      if (previewTimer) clearTimeout(previewTimer);
+      previewTimer = setTimeout(runRulePreview, 180);
+    }
+    async function runRulePreview() {
+      const box = $('rulePreviewBox');
+      if (!box) return;
+      if (rulesState.status !== 'ready') { box.hidden = true; return; }
+      const expiry = $('expiryDate').value;
+      const v = validateRules();
+      if (!expiry || !isValidDateStr(expiry)) {
+        box.hidden = false;
+        box.innerHTML = '<div class="rule-preview-meta"><i class="fas fa-clock" style="margin-right:6px"></i>选择「到期日期」后，这里会实时显示下一次预计提醒时间。</div>';
+        return;
+      }
+      if (v.first >= 0) {
+        box.hidden = false;
+        box.innerHTML = '<div class="rule-preview-meta" style="color:var(--tone-danger-text)"><i class="fas fa-exclamation-triangle" style="margin-right:6px"></i>请先修正标红的规则数值，再计算预计提醒时间。</div>';
+        return;
+      }
+      const rules = buildRulesPayload();
+      const reqId = ++previewRequestId;
+      box.hidden = false;
+      try {
+        const res = await postJson('/api/reminders/preview', {
+          expiryDate: expiry,
+          rules: rules,
+          isActive: $('isActive').checked,
+          autoRenew: $('autoRenew').checked
+        });
+        if (reqId !== previewRequestId) return;
+        const hrs = Array.isArray(res.notificationHours) ? res.notificationHours : [];
+        const winText = hrs.length ? ('仅在 ' + hrs.join('、') + ' 点发送') : '不限发送时段（整点检查触发）';
+        let head = '';
+        if (!$('isActive').checked) {
+          head = '<div class="rule-preview-head"><i class="fas fa-pause-circle"></i>订阅已停用：不会发送提醒</div>';
+        } else if (!rules.some(function (r) { return r.isEnabled; })) {
+          head = '<div class="rule-preview-head"><i class="fas fa-bell-slash"></i>未启用提醒规则：不会触发提醒</div>';
+        } else if (res.nextFireTime) {
+          head = '<div class="rule-preview-head"><i class="fas fa-bell" style="color:var(--accent)"></i>下次预计提醒：<span>' +
+            ST.esc(ST.fmtDateTimeInTz(res.nextFireTime)) + '</span></div>';
+        } else {
+          head = '<div class="rule-preview-head"><i class="fas fa-history"></i>当前周期内暂无待触发提醒</div>';
+        }
+        let meta = '<div class="rule-preview-meta">时区：' + ST.esc(res.timezoneDisplay || res.timezone) + ' · ' + ST.esc(winText) + '</div>';
+        if (res.enabledNotifierCount === 0) {
+          meta += '<div class="rule-preview-meta" style="color:var(--tone-warn-text)"><i class="fas fa-exclamation-triangle" style="margin-right:4px"></i>尚未启用任何通知渠道，命中后仅记日志不会发出消息（<a href="/admin/channels" style="color:var(--accent)">去配置</a>）。</div>';
+        }
+        const items = Array.isArray(res.perRule) ? res.perRule : [];
+        let listHtml = '';
+        if (items.length > 0 && $('isActive').checked) {
+          listHtml = '<div class="rule-preview-list">' + items.map(function (it) {
+            const label = ST.ruleSummary(it);
+            let statusTxt = '';
+            if (it.nextFireTime) statusTxt = '<strong>' + ST.esc(ST.fmtDateTimeInTz(it.nextFireTime)) + '</strong>';
+            else if (it.skippedReason === 'rule_disabled') statusTxt = '已停用';
+            else if (it.skippedReason === 'auto_renew') statusTxt = '自动续订跳过过期后提醒';
+            else statusTxt = '当前周期已过或未命中';
+            return '<div class="rule-preview-item"><span>' + ST.esc(label) + '</span><span>' + statusTxt + '</span></div>';
+          }).join('') + '</div>';
+        }
+        box.innerHTML = head + meta + listHtml;
+      } catch (e) {
+        if (reqId !== previewRequestId) return;
+        box.hidden = true;
+      }
     }
     /* 从 DOM 行同步回内存模型（输入即同步，模型是唯一数据源） */
     function syncRulesFromDom() {
@@ -1148,22 +1235,22 @@
         const type = row.querySelector('.r-type').value;
         const valueEl = row.querySelector('.r-value');
         const riEl = row.querySelector('.r-repeat');
-        const untilEl = row.querySelector('.r-until');
         next.push({
           id: prev.id || uuid(),
           type: type,
           value: valueEl ? valueEl.value : prev.value,
           unit: row.querySelector('.r-unit').value,
           repeatInterval: type === 'after_expiry' ? (riEl ? riEl.value : 24) : null,
-          repeatUntil: untilEl ? untilEl.value : (prev.repeatUntil || 'renewed'),
+          repeatUntil: prev.repeatUntil || 'renewed',
           isEnabled: row.querySelector('.r-enabled').checked,
           createdAt: prev.createdAt || new Date().toISOString()
         });
       });
-      if (next.length) rulesState.model = next;
+      rulesState.model = next;
       rulesState.dirty = true;
       rulesState.usingDefault = false;
       updateRulesSummary();
+      scheduleRulePreview();
     }
     function validateRules() {
       // 返回 { idx: 错误文案 } 与首个错误行序号；只做字段级校验，绝不静默改值
@@ -1278,8 +1365,12 @@
     }
     function clearDrawerAlert() { $('drawerAlert').innerHTML = ''; }
 
+    let trialModifiedAutoRenew = false;
+    let startDateAutoFilled = false;
     function openSubDrawer(mode, sub) {
       ++rulesRequestId;
+      trialModifiedAutoRenew = false;
+      startDateAutoFilled = false;
       drawerCtx.mode = mode;
       drawerCtx.subId = (mode === 'edit' && sub) ? sub.id : null;
       drawerCtx.rulesSourceId = sub ? sub.id : null;
@@ -1861,9 +1952,18 @@
       if (expandedIds.has(id)) expandedIds.delete(id); else expandedIds.add(id);
       renderList();
       if (restoreRowFocus) {
-        const row = Array.prototype.find.call($('listRoot').querySelectorAll('.st-row'), function (el) { return el.getAttribute('data-id') === id; });
-        if (row) row.focus();
+        const btn = Array.prototype.find.call($('listRoot').querySelectorAll('.expand-btn'), function (el) { return el.getAttribute('data-id') === id; });
+        if (btn) btn.focus();
       }
+    }
+    const FILTER_STORE_KEY = 'st_admin_filters_v1';
+    function saveFilters() {
+      try {
+        sessionStorage.setItem(FILTER_STORE_KEY, JSON.stringify({
+          status: filters.status, keyword: filters.keyword,
+          category: filters.category, mode: filters.mode, sort: filters.sort
+        }));
+      } catch (e) {}
     }
     function clearAllFilters() {
       filters.status = 'all';
@@ -1874,6 +1974,7 @@
       $('categoryFilter').value = '';
       $('modeFilter').value = '';
       syncStatusUrl();
+      saveFilters();
       renderList();
     }
     $('listRoot').addEventListener('click', function (e) {
@@ -1887,6 +1988,7 @@
         const sub = findSub(id);
         if (!sub) return;
         if (act === 'edit') openSubDrawer('edit', sub);
+        else if (act === 'renewCustom') openRenewDrawer(sub);
         else if (act === 'menu') { if (menuSubId === id && !$('rowMenu').hidden) closeRowMenu(); else openRowMenu(sub, actEl); }
         else if (act === 'payments') openPayments(sub);
         else if (act === 'test') testNotify(sub);
@@ -1895,17 +1997,12 @@
       }
       /* 展开区内的普通点击（如选中文本）不折叠；折叠只由行本体/展开按钮触发 */
     });
-    $('listRoot').addEventListener('keydown', function (e) {
-      if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('st-row')) {
-        e.preventDefault();
-        toggleExpand(e.target.closest('[data-subwrap]').getAttribute('data-subwrap'), true);
-      }
-    });
     $('statusChips').addEventListener('click', function (e) {
       const btn = e.target.closest('[data-chip]');
       if (!btn) return;
       filters.status = btn.getAttribute('data-chip');
       syncStatusUrl();
+      saveFilters();
       renderList();
     });
     $('rowMenu').addEventListener('click', function (e) {
@@ -1917,12 +2014,13 @@
       if (searchTimer) clearTimeout(searchTimer);
       searchTimer = setTimeout(function () {
         filters.keyword = $('searchKeyword').value.trim();
+        saveFilters();
         renderList();
       }, 200);
     });
-    $('sortSelect').addEventListener('change', function () { filters.sort = $('sortSelect').value; renderList(); });
-    $('categoryFilter').addEventListener('change', function () { filters.category = $('categoryFilter').value; renderList(); });
-    $('modeFilter').addEventListener('change', function () { filters.mode = $('modeFilter').value; renderList(); });
+    $('sortSelect').addEventListener('change', function () { filters.sort = $('sortSelect').value; saveFilters(); renderList(); });
+    $('categoryFilter').addEventListener('change', function () { filters.category = $('categoryFilter').value; saveFilters(); renderList(); });
+    $('modeFilter').addEventListener('change', function () { filters.mode = $('modeFilter').value; saveFilters(); renderList(); });
     $('toolbarMenuBtn').addEventListener('click', function (e) { e.stopPropagation(); toggleToolbarMenu(); });
     $('resetFiltersBtn').addEventListener('click', function () { clearAllFilters(); closeToolbarMenu(); });
     $('addSubscriptionBtn').addEventListener('click', function () { openSubDrawer('create', null); });
@@ -1941,6 +2039,29 @@
     $('drawerPaymentsBtn').addEventListener('click', function () {
       const sub = findSub(drawerCtx.subId);
       if (sub) openPayments(sub);
+    });
+    $('startDate').addEventListener('input', function () { startDateAutoFilled = false; });
+    $('autoRenew').addEventListener('change', function () {
+      trialModifiedAutoRenew = false;
+      scheduleRulePreview();
+    });
+    $('isActive').addEventListener('change', scheduleRulePreview);
+    $('expiryDate').addEventListener('change', function () {
+      const exp = $('expiryDate').value;
+      const start = $('startDate').value;
+      if (startDateAutoFilled && isValidDateStr(exp) && isValidDateStr(start) && exp < start) {
+        const pv = Math.max(1, parseInt($('periodValue').value, 10) || 1);
+        const pu = $('periodUnit').value || 'month';
+        const back = addPeriodToDateStr(exp, -pv, pu);
+        if (isValidDateStr(back)) {
+          $('startDate').value = back;
+          ST.toast('已自动将开始日期前移 1 个周期以匹配到期日');
+        }
+      }
+      scheduleRulePreview();
+    });
+    $('rulesEditor').addEventListener('toggle', function () {
+      if ($('rulesEditor').open) scheduleRulePreview();
     });
     $('useLunar').addEventListener('change', function () {
       if ($('useLunar').checked) { $('endOfMonth').checked = false; $('endOfMonth').disabled = true; }
@@ -1961,16 +2082,27 @@
         const snap = {
           periodValue: $('periodValue').value, periodUnit: $('periodUnit').value,
           customType: $('customType').value, startDate: $('startDate').value, expiryDate: $('expiryDate').value,
-          autoRenew: $('autoRenew').checked
+          autoRenew: $('autoRenew').checked,
+          trialModifiedAutoRenew: trialModifiedAutoRenew,
+          startDateAutoFilled: startDateAutoFilled
         };
         $('periodValue').value = p.v;
         $('periodUnit').value = p.u;
-        if (p.trial) { $('customType').value = '试用'; $('autoRenew').checked = false; }
-        else if ($('customType').value.trim() === '试用') { $('customType').value = ''; }
-        if (!$('startDate').value) $('startDate').value = ST.fmtDateInTz(new Date().toISOString());
+        if (p.trial) {
+          $('customType').value = '试用';
+          if ($('autoRenew').checked) { $('autoRenew').checked = false; trialModifiedAutoRenew = true; }
+        } else {
+          if ($('customType').value.trim() === '试用') $('customType').value = '';
+          if (trialModifiedAutoRenew) { $('autoRenew').checked = true; trialModifiedAutoRenew = false; }
+        }
+        if (!$('startDate').value) {
+          $('startDate').value = ST.fmtDateInTz(new Date().toISOString());
+          startDateAutoFilled = true;
+        }
         if (isValidDateStr($('startDate').value)) $('expiryDate').value = addPeriodToDateStr($('startDate').value, p.v, p.u);
         clearFieldErrors($('subscriptionForm'));
         refreshDirtyDot();
+        scheduleRulePreview();
         ST.toast('已套用' + p.label + '预设，到期日已按开始日推算' + (p.trial ? '；试用结束后不会自动更新日期' : ''), {
           duration: 5000, actionLabel: '撤销',
           onAction: function () {
@@ -1980,7 +2112,10 @@
             $('autoRenew').checked = snap.autoRenew;
             $('startDate').value = snap.startDate;
             $('expiryDate').value = snap.expiryDate;
+            trialModifiedAutoRenew = snap.trialModifiedAutoRenew;
+            startDateAutoFilled = snap.startDateAutoFilled;
             refreshDirtyDot();
+            scheduleRulePreview();
           }
         });
       });
@@ -2079,12 +2214,31 @@
 
     /* ═══════════ 初始化 ═══════════ */
     (function parseParams() {
+      try {
+        const raw = sessionStorage.getItem(FILTER_STORE_KEY);
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (saved && typeof saved === 'object') {
+            if (typeof saved.keyword === 'string') { filters.keyword = saved.keyword; $('searchKeyword').value = saved.keyword; }
+            if (typeof saved.category === 'string') filters.category = saved.category;
+            if (typeof saved.mode === 'string') { filters.mode = saved.mode; $('modeFilter').value = saved.mode; }
+            if (typeof saved.sort === 'string' && ['expiryAsc', 'expiryDesc', 'nameAsc', 'amountDesc'].indexOf(saved.sort) >= 0) {
+              filters.sort = saved.sort;
+              $('sortSelect').value = saved.sort;
+            }
+            if (typeof saved.status === 'string' && ['all', 'soon', 'expired', 'trial', 'disabled'].indexOf(saved.status) >= 0) {
+              filters.status = saved.status;
+            }
+          }
+        }
+      } catch (e) {}
       const q = new URLSearchParams(window.location.search);
       const st = q.get('status');
-      if (st && ['soon', 'expired', 'trial', 'disabled'].indexOf(st) >= 0) filters.status = st;
       focusId = q.get('focus') || '';
       highlightRuleId = q.get('rule') || '';
       if (focusId) focusRuleSubId = focusId;
+      if (st && ['all', 'soon', 'expired', 'trial', 'disabled'].indexOf(st) >= 0) filters.status = st;
+      else if (focusId || highlightRuleId) filters.status = 'all';
     })();
     function buildFilterOptions() {
       const catSet = new Set(categories);
