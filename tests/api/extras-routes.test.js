@@ -328,3 +328,62 @@ describe('GET /api/subscriptions/:id/next-reminder', () => {
     expect(body.allUpcoming.length).toBeGreaterThan(0);
   });
 });
+
+describe('新增聚合与触发路由', () => {
+  it('GET /api/subscriptions/next-reminders 单次返回全部活跃订阅最早提醒', async () => {
+    const cookie = await loginCookie();
+    await env.SUBSCRIPTIONS_KV.put('config', JSON.stringify({
+      ADMIN_USERNAME: 'admin', ADMIN_PASSWORD: 'password', JWT_SECRET: 'k',
+      TIMEZONE: 'Asia/Shanghai', NOTIFICATION_HOURS: ['08']
+    }));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-11T04:00:00Z'));
+
+    await app.request('/api/subscriptions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({
+        name: '更早到期', expiryDate: '2026-11-20', periodValue: 1, periodUnit: 'month',
+        reminderRules: [{ type: 'before_expiry', value: 7, unit: 'days', isEnabled: true }]
+      })
+    }, env);
+    await app.request('/api/subscriptions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({
+        name: '更晚到期', expiryDate: '2026-12-20', periodValue: 1, periodUnit: 'month',
+        reminderRules: [{ type: 'before_expiry', value: 7, unit: 'days', isEnabled: true }]
+      })
+    }, env);
+
+    const res = await app.request('/api/subscriptions/next-reminders', { headers: { Cookie: cookie } }, env);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.items).toHaveLength(2);
+    expect(body.nextReminder.subName).toBe('更早到期');
+  });
+
+  it('GET /api/notification-logs/latest-by-channel 聚合返回各渠道最新一条日志', async () => {
+    const cookie = await loginCookie();
+    const { writeLog } = await import('../../src/data/notification-logs.repo.ts');
+    await writeLog(env, { subId: 's1', channel: 'telegram', status: 'failed', error: 'old', timestamp: '2026-05-20T00:00:00Z' });
+    await writeLog(env, { subId: 's1', channel: 'telegram', status: 'success', timestamp: '2026-05-21T00:00:00Z' });
+    await writeLog(env, { subId: 's1', channel: 'bark', status: 'failed', error: 'err', timestamp: '2026-05-22T00:00:00Z' });
+
+    const res = await app.request('/api/notification-logs/latest-by-channel', { headers: { Cookie: cookie } }, env);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.latest.telegram.status).toBe('success');
+    expect(body.latest.bark.status).toBe('failed');
+  });
+
+  it('POST /api/scheduler/run 手动执行并返回调度日志', async () => {
+    const cookie = await loginCookie();
+    const res = await app.request('/api/scheduler/run', { method: 'POST', headers: { Cookie: cookie } }, env);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.log).toBeTruthy();
+    expect(typeof body.log.checkedCount).toBe('number');
+  });
+});

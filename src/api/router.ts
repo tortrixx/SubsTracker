@@ -29,7 +29,7 @@ async function handleApiRequest(request: Request, env: AppEnv): Promise<Response
     if (thirdPartyResponse) return thirdPartyResponse;
   }
 
-  const { user } = await getUserFromRequest(request, env);
+  const { user } = await getUserFromRequest(request, env, config);
   if (!user && path !== '/login') {
     return new Response(
       JSON.stringify({ success: false, message: '未授权访问' }),
@@ -38,8 +38,8 @@ async function handleApiRequest(request: Request, env: AppEnv): Promise<Response
   }
 
   if (path === '/config') {
-    if (method === 'GET') return handleGetConfig(env);
-    if (method === 'POST') return handleUpdateConfig(request, env);
+    if (method === 'GET') return handleGetConfig(env, config);
+    if (method === 'POST') return handleUpdateConfig(request, env, config);
   }
 
   if (path === '/dashboard/stats' && method === 'GET') {
@@ -61,14 +61,11 @@ async function handleApiRequest(request: Request, env: AppEnv): Promise<Response
   }
 
   // 新增路由：提醒规则 / 通知日志 / 调度日志（提醒规则 / 通知日志 / 调度日志）
-  const extraResponse = await handleExtraRoutes(request, env, path);
+  const extraResponse = await handleExtraRoutes(request, env, path, config);
   if (extraResponse) return extraResponse;
 
   const subscriptionResponse = await handleSubscriptions(request, env, path);
   if (subscriptionResponse) return subscriptionResponse;
-
-  const thirdPartyResponse = await handleThirdPartyNotify(request, env, config, url);
-  if (thirdPartyResponse) return thirdPartyResponse;
 
   return new Response(
     JSON.stringify({ success: false, message: '未找到请求的资源' }),
