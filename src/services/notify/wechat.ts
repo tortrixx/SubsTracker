@@ -3,7 +3,7 @@
  *
  * 支持 text / markdown 两种消息格式，可配置 @所有人 / @手机号。
  */
-import { ok, fail, errorMessage, stripMarkdown } from './channel.js';
+import { ok, fail, errorMessage, stripMarkdown, fetchWithTimeout, isSafeHttpUrl } from './channel.js';
 import type { Channel } from './channel.js';
 import type { AppConfig } from '../../data/config.js';
 
@@ -12,6 +12,7 @@ export const wecomChannel: Channel = {
 
   validateConfig(config) {
     if (!config.WECHATBOT_WEBHOOK) return { ok: false, error: '缺少 WECHATBOT_WEBHOOK' };
+    if (!isSafeHttpUrl(config.WECHATBOT_WEBHOOK)) return { ok: false, error: 'WECHATBOT_WEBHOOK 必须为 http/https 地址' };
     return { ok: true };
   },
 
@@ -47,7 +48,7 @@ export const wecomChannel: Channel = {
     }
 
     try {
-      const r = await fetch(config.WECHATBOT_WEBHOOK, {
+      const r = await fetchWithTimeout(config.WECHATBOT_WEBHOOK, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(messageData)

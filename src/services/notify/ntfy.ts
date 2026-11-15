@@ -9,7 +9,7 @@
  * - NTFY_TOPIC   主题名（必填）
  * - NTFY_TOKEN   可选 Bearer Token（受保护主题）
  */
-import { ok, fail, errorMessage, stripMarkdown } from './channel.js';
+import { ok, fail, errorMessage, stripMarkdown, fetchWithTimeout, isSafeHttpUrl } from './channel.js';
 import type { Channel } from './channel.js';
 import type { AppConfig } from '../../data/config.js';
 
@@ -19,6 +19,9 @@ export const ntfyChannel: Channel = {
   validateConfig(config) {
     if (!config.NTFY_TOPIC || !String(config.NTFY_TOPIC).trim()) {
       return { ok: false, error: '缺少 NTFY_TOPIC' };
+    }
+    if (config.NTFY_SERVER && !isSafeHttpUrl(config.NTFY_SERVER)) {
+      return { ok: false, error: 'NTFY_SERVER 必须为 http/https 地址' };
     }
     return { ok: true };
   },
@@ -45,7 +48,7 @@ export const ntfyChannel: Channel = {
     const body = stripMarkdown(payload.content || '') || (payload.title || '通知');
 
     try {
-      const r = await fetch(url, {
+      const r = await fetchWithTimeout(url, {
         method: 'POST',
         headers,
         body

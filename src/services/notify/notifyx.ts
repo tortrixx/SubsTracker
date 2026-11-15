@@ -1,7 +1,7 @@
 /**
  * NotifyX 通知渠道（https://www.notifyx.cn）
  */
-import { ok, fail, errorMessage } from './channel.js';
+import { ok, fail, errorMessage, fetchWithTimeout, redactSecrets } from './channel.js';
 import type { Channel } from './channel.js';
 import type { AppConfig } from '../../data/config.js';
 
@@ -25,7 +25,7 @@ export const notifyxChannel: Channel = {
     });
 
     try {
-      const r = await fetch(url, {
+      const r = await fetchWithTimeout(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body
@@ -35,7 +35,7 @@ export const notifyxChannel: Channel = {
         ? ok('notifyx', result)
         : fail('notifyx', `NotifyX 返回 ${result.status || 'unknown'}`, result);
     } catch (err) {
-      return fail('notifyx', errorMessage(err));
+      return fail('notifyx', redactSecrets(errorMessage(err), config.NOTIFYX_API_KEY));
     }
   },
 

@@ -113,16 +113,68 @@ export function fail(name: string, error: string, raw?: any): ChannelResult {
 }
 
 /**
- * 把任意 error 转字符串（兼容 fetch 抛出的 TypeError、Response 等）。
+ * 把任意 error 转字符串（兼容 fetch 抛出的 TypeError、AbortError、Response 等）。
  */
 export function errorMessage(err: any): string {
   // 系统边界：入参为任意异常对象（Error / 字符串 / 三方响应），统一在此收口
   if (!err) return 'unknown error';
   if (typeof err === 'string') return err;
+  if (err.name === 'AbortError' || err.name === 'TimeoutError') return '请求超时';
   if (err.message) return String(err.message);
   try {
     return JSON.stringify(err);
   } catch {
     return String(err);
+  }
+}
+
+/** 校验 URL 是否为安全的 http/https 地址。 */
+export function isSafeHttpUrl(raw: string): boolean {
+  try {
+    const u = new URL(String(raw || '').trim());
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/** 将错误文本中的敏感凭证替换为 [REDACTED]，避免落入通知日志。 */
+export function redactSecrets(text: string, ...secrets: Array<string | undefined | null>): string {
+  let out = String(text || '');
+  for (const s of secrets) {
+    const trimmed = s ? String(s).trim() : '';
+    if (trimmed.length >= 4) {
+      out = out.replaceAll(trimmed, '[REDACTED]');
+    }
+  }
+  return out;
+}
+
+/** UTF-8 安全的 Basic Auth 编码，避免非 ASCII 密码触发 btoa 异常。 */
+export function encodeBasicAuth(username: string, password: string): string {
+  const bytes = new TextEncoder().encode(`${username}:${password}`);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return `Basic ${btoa(binary)}`;
+}
+
+const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
+
+/**
+ * 带超时保护的 fetch 封装：防止上游渠道挂起拖垮调度器或 Workers 请求时长。
+ */
+export async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs: number = DEFAULT_FETCH_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: init.signal || controller.signal });
+  } finally {
+    clearTimeout(timer);
   }
 }

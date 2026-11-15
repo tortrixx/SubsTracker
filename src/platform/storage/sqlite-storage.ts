@@ -40,9 +40,21 @@ export function createSqliteStorage({ path }: { path: string }): SqliteStorage {
     'INSERT INTO kv (key, value, expires_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, expires_at = excluded.expires_at'
   );
   const stmtDelete = db.prepare('DELETE FROM kv WHERE key = ?');
+  const stmtDeleteExpired = db.prepare('DELETE FROM kv WHERE expires_at IS NOT NULL AND expires_at <= ?');
   const stmtList = db.prepare(
     'SELECT key FROM kv WHERE substr(key, 1, ?) = ? AND (expires_at IS NULL OR expires_at > ?) ORDER BY key ASC LIMIT ? OFFSET ?'
   );
+
+  // 节流清理过期键（log / dedupe / login_attempts），防止长期运行数据库只增不减
+  let writeOps = 0;
+  let lastPrunedAt = 0;
+  function maybePruneExpired(now: number): void {
+    writeOps += 1;
+    if (writeOps < 64 && now - lastPrunedAt < 60_000) return;
+    writeOps = 0;
+    lastPrunedAt = now;
+    stmtDeleteExpired.run(now);
+  }
 
   function isLive(row: KvValueRow | undefined): boolean {
     return !!row && (row.expires_at === null || row.expires_at > Date.now());
@@ -61,9 +73,11 @@ export function createSqliteStorage({ path }: { path: string }): SqliteStorage {
       return String(liveRow.value);
     },
     async put(key, value, options) {
+      const now = Date.now();
       const ttl = options && options.expirationTtl;
-      const expiresAt = ttl ? Date.now() + Number(ttl) * 1000 : null;
+      const expiresAt = ttl ? now + Number(ttl) * 1000 : null;
       stmtPut.run(key, String(value), expiresAt);
+      maybePruneExpired(now);
     },
     async delete(key) {
       stmtDelete.run(key);
