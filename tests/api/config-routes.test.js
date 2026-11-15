@@ -228,4 +228,36 @@ describe('POST /api/test-notification (WPUSH)', () => {
     expect(sentBody).not.toHaveProperty('channel');
     expect(sentBody).not.toHaveProperty('topic_code');
   });
+
+  it('拒绝无效 TIMEZONE 或非 http/https APP_URL，并返回默认凭据提示标记', async () => {
+    const cookie = await loginCookie();
+    const getRes = await app.request('/api/config', { headers: { Cookie: cookie } }, env);
+    const cfg = await getRes.json();
+    expect(cfg.IS_DEFAULT_CREDENTIALS).toBe(true);
+
+    const badTz = await app.request('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ TIMEZONE: 'Invalid/Zone' })
+    }, env);
+    expect(badTz.status).toBe(400);
+
+    const badUrl = await app.request('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ APP_URL: 'javascript:alert(1)' })
+    }, env);
+    expect(badUrl.status).toBe(400);
+
+    const okUpdate = await app.request('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ ADMIN_PASSWORD: 'new-strong-password', APP_URL: 'https://subs.example.com' })
+    }, env);
+    expect(okUpdate.status).toBe(200);
+
+    const cfgAfter = await (await app.request('/api/config', { headers: { Cookie: cookie } }, env)).json();
+    expect(cfgAfter.IS_DEFAULT_CREDENTIALS).toBe(false);
+    expect(cfgAfter.APP_URL).toBe('https://subs.example.com');
+  });
 });

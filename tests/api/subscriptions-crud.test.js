@@ -291,5 +291,16 @@ describe('订阅 CRUD', () => {
     );
     expect((await off.json()).success).toBe(true);
     expect((await subRepo.getById(env, subscription.id)).isActive).toBe(false);
+
+    const badToggle = await app.request(
+      '/api/subscriptions/' + subscription.id + '/toggle-status',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ isActive: 'nope' })
+      },
+      env
+    );
+    expect(badToggle.status).toBe(400);
   });
 });

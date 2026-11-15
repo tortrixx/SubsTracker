@@ -92,5 +92,29 @@ describe('POST /api/notify/:token', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(String(body.message || '')).toMatch(/成功/);
+
+    const { query } = await import('../../src/data/notification-logs.repo.ts');
+    const logs = await query(env, { subId: 'thirdparty', limit: 10 });
+    expect(logs).toHaveLength(1);
+    expect(logs[0].ruleId).toBe('thirdparty');
+    expect(logs[0].channel).toBe('webhook');
+    expect(logs[0].status).toBe('success');
+  });
+
+  it('非法 JSON 请求体 → 400', async () => {
+    await env.SUBSCRIPTIONS_KV.put(
+      'config',
+      JSON.stringify({ JWT_SECRET: 'k', THIRD_PARTY_API_TOKEN: 'good-token' })
+    );
+    const res = await app.request(
+      '/api/notify/good-token',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{broken-json'
+      },
+      env
+    );
+    expect(res.status).toBe(400);
   });
 });

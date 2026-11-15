@@ -485,7 +485,7 @@ export interface RenewalComputation {
   newExpiryDate: string;
   /** 支付日 */
   paymentDate: string;
-  /** 将写入的支付记录（预览时与落库同构；id 为时间戳生成，预览与落库两次调用不保证相同） */
+  /** 将写入的支付记录（预览与落库分别生成 ID） */
   paymentRecord: PaymentRecord;
 }
 
@@ -516,9 +516,18 @@ export function computeManualRenewal(
   timezone: string,
   nowUtc: Date
 ): RenewalComputation {
+  const periodError = validatePeriodInput(subscription);
+  if (periodError || !subscription.periodValue || !subscription.periodUnit) throw new Error(periodError || '订阅未设置续订周期');
+  if (options.periodMultiplier !== undefined && (!Number.isSafeInteger(options.periodMultiplier) || options.periodMultiplier < 1 || options.periodMultiplier > 1200)) {
+    throw new Error('续期周期数须为 1 至 1200 的整数');
+  }
+  if (options.amount !== undefined && (typeof options.amount !== 'number' || !Number.isFinite(options.amount) || options.amount < 0)) {
+    throw new Error('续期金额须为不小于 0 的数字');
+  }
   const paymentDate = options.paymentDate
     ? parseDateInputInTimezone(options.paymentDate, timezone)
     : nowUtc;
+  if (!Number.isFinite(paymentDate.getTime())) throw new Error('支付日期无效');
   const amount = options.amount !== undefined ? options.amount : subscription.amount || 0;
   const periodMultiplier = options.periodMultiplier || 1;
   const note = options.note || '手动续订';

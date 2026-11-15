@@ -318,7 +318,7 @@ export async function handleImportBackup(request: Request, env: AppEnv): Promise
 
     return json({
       success: true,
-      message: `恢复完成（模式: ${mode === 'replace' ? '覆盖' : '合并'}）`,
+      message: `恢复完成（模式: ${mode === 'replace' ? '覆盖' : mode === 'missing' ? '撤销删除' : '合并'}）`,
       stats: {
         subscriptions: importedSubs,
         reminderRules: importedRules,

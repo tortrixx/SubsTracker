@@ -139,7 +139,25 @@ async function handleSubscriptions(request: Request, env: AppEnv, path: string):
     const id = parts[2];
 
     if (parts[3] === 'toggle-status' && method === 'POST') {
-      const body = (await request.json()) as { isActive: boolean };
+      let body: { isActive?: unknown };
+      try {
+        const raw: unknown = await request.json();
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+          return new Response(JSON.stringify({ success: false, message: '请求体必须为 JSON 对象' }), {
+            status: 400, headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        body = raw as { isActive?: unknown };
+      } catch {
+        return new Response(JSON.stringify({ success: false, message: '请求体不是合法 JSON' }), {
+          status: 400, headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      if (typeof body.isActive !== 'boolean') {
+        return new Response(JSON.stringify({ success: false, message: 'isActive 必须为布尔值' }), {
+          status: 400, headers: { 'Content-Type': 'application/json' }
+        });
+      }
       const result = await toggleSubscriptionStatus(id, body.isActive, env);
       return new Response(JSON.stringify(result), {
         status: result.success ? 200 : 400,
@@ -192,7 +210,20 @@ async function handleSubscriptions(request: Request, env: AppEnv, path: string):
 
     if (parts[3] === 'payments' && parts[4] && method === 'PUT') {
       const paymentId = parts[4];
-      const paymentData = (await request.json()) as PaymentData;
+      let paymentData: PaymentData;
+      try {
+        const raw: unknown = await request.json();
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+          return new Response(JSON.stringify({ success: false, message: '请求体必须为 JSON 对象' }), {
+            status: 400, headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        paymentData = raw as PaymentData;
+      } catch {
+        return new Response(JSON.stringify({ success: false, message: '请求体不是合法 JSON' }), {
+          status: 400, headers: { 'Content-Type': 'application/json' }
+        });
+      }
       const result = await updatePaymentRecord(id, paymentId, paymentData, env);
       return new Response(JSON.stringify(result), { status: result.success ? 200 : 400, headers: { 'Content-Type': 'application/json' } });
     }
