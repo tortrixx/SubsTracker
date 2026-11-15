@@ -4,6 +4,9 @@
   "description": "SubsTracker — a timed-trigger platform with subscriptions as the first plugin. One TypeScript codebase for Cloudflare Workers + KV and self-hosted Node + SQLite, with a reminder rule engine and 11 notification channels.",
   "main": "src/index.ts",
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
     "setup": "node scripts/setup-kv.cjs",

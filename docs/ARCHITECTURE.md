@@ -9,7 +9,7 @@ SubsTracker 按「端口与适配器」（Ports & Adapters）组织：业务逻�
 | 入口 | 运行时 | 静态资源 | 定时任务 | 存储装配 |
 | --- | --- | --- | --- | --- |
 | `src/index.ts` | Cloudflare Workers | `[assets]` 绑定托管 `public/` | Cron Triggers（整点） | `SUBSCRIPTIONS_KV` 绑定 |
-| `src/server.ts` | Node ≥ 22 | `@hono/node-server` serveStatic | 整点对齐 setInterval | StoragePort 适配器（见下） |
+| `src/server.ts` | Node.js 24 | `@hono/node-server` serveStatic | 整点对齐 setInterval | StoragePort 适配器（见下） |
 
 两个入口之下是同一套 `src/app.ts`（Hono 应用）与全部业务模块。
 
@@ -42,7 +42,8 @@ SubsTracker 按「端口与适配器」（Ports & Adapters）组织：业务逻�
   （入口 `src/index.ts`），无需预构建，`npm run deploy` 上线。
 - **Node 服务器**：`npm run build` 用 tsc 产出 `dist/`（外加
   `scripts/copy-assets.mjs` 复制 .html 视图与 html-loader 到 dist），
-  `npm start` 运行 `dist/server.js`。发布给服务器的是构建产物，
+  `public/` 静态资源由 `@hono/node-server` 的 `serveStatic` 直接托管，
+  `npm start` 运行 `dist/server.js`。发布给服务器的是构建产物与 `public/`，
   服务器不需要装 TypeScript。
 
 存储契约脚本 `npm run check:storage` 直接对 dist 产物跑断言，

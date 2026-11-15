@@ -70,7 +70,7 @@ Runtime configuration is stored in the app's own storage and edited in **Setting
 | `NOTIFICATION_HOURS` | Hours of the day when sending is allowed, e.g. `["08","09","22"]`. **Empty = unrestricted** (every hourly tick may send). Edited on the Channels page. |
 | `DEFAULT_REMINDER_RULES` | The rule template applied to newly created subscriptions that don't specify their own rules. `null` (never configured) falls back to the built-in preset (7/3/1 days before + on the day); an empty array means new subscriptions deliberately get **no** rules. |
 | `THIRD_PARTY_API_TOKEN` | Token for the third-party trigger API (`/api/thirdparty/notify`). |
-| Channel credentials | Per channel, set in the Channels UI: e.g. `RESEND_API_KEY` + `EMAIL_FROM`/`EMAIL_TO` (email), `TG_BOT_TOKEN` + `TG_CHAT_ID` (Telegram), `BARK_DEVICE_KEY`, `SERVERCHAN_SENDKEY`, `PUSHPLUS_TOKEN`, `NTFY_TOPIC`, `GOTIFY_SERVER_URL` + app token, `WECHATBOT_WEBHOOK`, `WEBHOOK_URL`. Values are never committed — they exist only in your deployment's storage. |
+| Channel credentials | Per channel, set in the Channels UI: `RESEND_API_KEY` + `EMAIL_FROM`/`EMAIL_TO` (email), `TG_BOT_TOKEN` + `TG_CHAT_ID` (Telegram), `NOTIFYX_API_KEY` (NotifyX), `WECHATBOT_WEBHOOK` (WeCom), `BARK_DEVICE_KEY` (Bark), `SERVERCHAN_SENDKEY` (ServerChan), `PUSHPLUS_TOKEN` (PushPlus), `NTFY_TOPIC` (ntfy), `GOTIFY_SERVER_URL` + `GOTIFY_APP_TOKEN` (Gotify), `WPUSH_APIKEY` (WPush), and `WEBHOOK_URL` (Webhook). Values are never committed — they exist only in your deployment's storage. |
 
 Invalid `DEFAULT_REMINDER_RULES` payloads are rejected as a whole (HTTP 400); the previously stored value is kept.
 

@@ -70,7 +70,7 @@ npm start             # 可通过环境变量设置 PORT / HOST / SQLITE_PATH
 | `NOTIFICATION_HOURS` | 允许发送的小时，如 `["08","09","22"]`。**为空 = 不限制**（每个整点都可以发送）。在渠道页编辑。 |
 | `DEFAULT_REMINDER_RULES` | 新建订阅未自带规则时套用的规则模板。`null`（从未配置）回退内置预设（提前 7/3/1 天 + 当天）；空数组表示新订阅明确**不带**任何规则。 |
 | `THIRD_PARTY_API_TOKEN` | 第三方触发接口（`/api/thirdparty/notify`）的令牌。 |
-| 各渠道凭据 | 在渠道页逐个配置，如邮件的 `RESEND_API_KEY` + `EMAIL_FROM`/`EMAIL_TO`、Telegram 的 `TG_BOT_TOKEN` + `TG_CHAT_ID`、`BARK_DEVICE_KEY`、`SERVERCHAN_SENDKEY`、`PUSHPLUS_TOKEN`、`NTFY_TOPIC`、Gotify 的 `GOTIFY_SERVER_URL` + 应用令牌、企业微信 `WECHATBOT_WEBHOOK`、Webhook 的 `WEBHOOK_URL`。只存于你的部署存储，绝不进仓库。 |
+| 各渠道凭据 | 在渠道页逐个配置：邮件（`RESEND_API_KEY` + `EMAIL_FROM`/`EMAIL_TO`）、Telegram（`TG_BOT_TOKEN` + `TG_CHAT_ID`）、NotifyX（`NOTIFYX_API_KEY`）、企业微信（`WECHATBOT_WEBHOOK`）、Bark（`BARK_DEVICE_KEY`）、Server 酱（`SERVERCHAN_SENDKEY`）、PushPlus（`PUSHPLUS_TOKEN`）、ntfy（`NTFY_TOPIC`）、Gotify（`GOTIFY_SERVER_URL` + `GOTIFY_APP_TOKEN`）、WPush（`WPUSH_APIKEY`）、Webhook（`WEBHOOK_URL`）。只存于你的部署存储，绝不进仓库。 |
 
 `DEFAULT_REMINDER_RULES` 提交非法规则会整单拒绝（HTTP 400），已存值不变。
 
