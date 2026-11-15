@@ -92,7 +92,7 @@
             <span style="flex:1"></span>
             <span class="st-caption" id="enabledCount"></span>
           </div>
-          <p class="st-caption" style="margin-top:8px">发送失败的渠道会在规则再次命中且处于发送时段时重试；若当天只有一次发送时段，则不会自动补发。</p>
+          <p class="st-caption" style="margin-top:8px">发送失败的渠道会在规则再次命中且处于发送时段时重试；若当天只有一次发送时段，则不会自动补发。卡片内「测试」使用已保存配置发送真实消息；未保存的修改可在配置抽屉内直接测试。</p>
         </section>
 
         <section class="st-channel-grid" id="channelGrid" aria-label="渠道列表"></section>
@@ -304,9 +304,11 @@
         return;
       }
       var ok = entry.status === 'success';
-      var html = '<a href="' + href + '"><span class="last-dot ' + (ok ? 'is-ok' : 'is-danger') + '"></span>' +
+      var errText = !ok && entry.error ? String(entry.error) : '';
+      var shortErr = errText.length > 60 ? errText.slice(0, 60) + '…' : errText;
+      var html = '<a href="' + href + '"' + (errText ? ' title="' + ST.esc(errText) + '"' : '') + '><span class="last-dot ' + (ok ? 'is-ok' : 'is-danger') + '"></span>' +
         (ok ? '最近成功' : '最近失败') + ' · ' + ST.esc(sourceLabel(entry.ruleId)) + ' · ' + ST.esc(relTime(entry.timestamp));
-      if (!ok && entry.error) html += ' · ' + ST.esc(String(entry.error).slice(0, 60));
+      if (shortErr) html += ' · ' + ST.esc(shortErr);
       html += '</a>';
       el.innerHTML = html;
     }
@@ -349,7 +351,6 @@
           '<button type="button" class="st-btn st-btn--primary st-btn--sm" data-open="' + def.name + '">配置</button>' +
           '<button type="button" class="st-btn st-btn--ghost st-btn--sm" data-test="' + def.name + '">测试</button>' +
           '</div>';
-        html += '<p class="st-caption">测试使用已保存的配置，将发出一条真实消息。</p>';
         html += '</article>';
         return html;
       }).join('');
@@ -366,6 +367,12 @@
       grid.querySelectorAll('[data-test]').forEach(function(btn) {
         btn.addEventListener('click', async function() {
           var name = btn.getAttribute('data-test');
+          var curState = ST.channelState(name, ST.config || {});
+          if (curState.state === 'unconfigured' || curState.state === 'incomplete') {
+            openDrawer(name);
+            ST.toast(ST.channelLabel(name) + ' 尚未完成必填配置，请先补全后再测试', { tone: 'warn' });
+            return;
+          }
           var r = await testChannel(name, btn, null);
           if (r.ok) ST.toast(ST.channelLabel(name) + ' 测试发送成功');
           else ST.toast(ST.channelLabel(name) + ' 测试失败：' + r.message, { tone: 'error' });
@@ -636,7 +643,7 @@
         var html = '<div class="st-field" data-fieldwrap="' + f.key + '">';
         if (f.type === 'switch') {
           html += '<span class="st-field-label">' + ST.esc(f.label) + '</span>' +
-            '<label class="st-switch"><input type="checkbox" data-field="' + f.key + '" aria-label="' + ST.esc(f.label) + '"' + (cfg[f.key] === 'true' ? ' checked' : '') + '>' +
+            '<label class="st-switch"><input type="checkbox" data-field="' + f.key + '" aria-label="' + ST.esc(f.label) + '"' + ((cfg[f.key] === true || cfg[f.key] === 'true') ? ' checked' : '') + '>' +
             '<span class="st-switch-track"></span><span class="st-switch-thumb"></span></label>' +
             (f.switchLabel ? '<span class="st-caption">' + ST.esc(f.switchLabel) + '</span>' : '');
         } else {

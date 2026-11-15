@@ -21,6 +21,7 @@ import * as notifyLogsRepo from '../../data/notification-logs.repo.js';
 import * as schedLogsRepo from '../../data/scheduler-logs.repo.js';
 import { getCategories, addCategory } from '../../data/categories.js';
 import { nextMatchingCheck } from '../../services/notify/next-check.js';
+import { formatTimezoneDisplay, isValidTimezone, parseDateInputInTimezone } from '../../core/time.js';
 import { ALL_CHANNELS } from '../../services/notify/dispatch.js';
 import { checkExpiringSubscriptions } from '../../services/scheduler.js';
 import { getConfig, type AppConfig } from '../../data/config.js';
@@ -106,6 +107,97 @@ export async function handleExtraRoutes(
       .filter((x): x is NonNullable<typeof x> => x !== null)
       .sort((a, b) => new Date(a.nextFireTime as string).getTime() - new Date(b.nextFireTime as string).getTime());
     return json({ success: true, nextReminder: items[0] || null, items });
+  }
+
+  // /reminders/preview（只读预测：不写存储、不发通知，共享 validateReminderRules + nextMatchingCheck）
+  if (path === '/reminders/preview' && method === 'POST') {
+    let raw: unknown;
+    try {
+      raw = await request.json();
+    } catch {
+      return json({ success: false, message: '请求体不是合法 JSON' }, 400);
+    }
+    const body = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+    const config = preloadedConfig || await getConfig(env);
+    const tzReq = typeof body.timezone === 'string' ? body.timezone.trim() : '';
+    const timezone = tzReq && isValidTimezone(tzReq) ? tzReq : (config.TIMEZONE || 'UTC');
+    const hours = Array.isArray(body.notificationHours)
+      ? body.notificationHours.map((h) => String(h))
+      : (Array.isArray(config.NOTIFICATION_HOURS) ? config.NOTIFICATION_HOURS : []);
+    const enabledNotifiers = Array.isArray(config.ENABLED_NOTIFIERS) ? config.ENABLED_NOTIFIERS : [];
+
+    if (body.rules === undefined) {
+      return json({ success: false, message: '缺少 rules 参数' }, 400);
+    }
+    const validation = remindersRepo.validateReminderRules(body.rules);
+    if (!validation.ok) {
+      return json({ success: false, message: validation.message }, 400);
+    }
+
+    const expiryRaw = typeof body.expiryDate === 'string' ? body.expiryDate.trim() : '';
+    if (!expiryRaw) {
+      return json({ success: false, message: '请先选择到期日期' }, 400);
+    }
+    const expiryDate = parseDateInputInTimezone(expiryRaw, timezone);
+    if (Number.isNaN(expiryDate.getTime())) {
+      return json({ success: false, message: '到期日期无效' }, 400);
+    }
+
+    const isActive = body.isActive !== false;
+    const autoRenew = body.autoRenew === true;
+    const expiryIso = expiryDate.toISOString();
+    const now = new Date();
+
+    const perRule = validation.rules.map((r, index) => {
+      let nextFireTime: string | null = null;
+      let skippedReason: string | null = null;
+      if (!isActive) {
+        skippedReason = 'sub_inactive';
+      } else if (!r.isEnabled) {
+        skippedReason = 'rule_disabled';
+      } else if (autoRenew && r.type === 'after_expiry') {
+        skippedReason = 'auto_renew';
+      } else {
+        const previewRule: ReminderRule = {
+          id: `preview-${index}`,
+          type: r.type,
+          unit: r.unit,
+          value: r.value,
+          repeatInterval: r.repeatInterval,
+          repeatUntil: r.repeatUntil,
+          isEnabled: r.isEnabled,
+          createdAt: ''
+        };
+        nextFireTime = nextMatchingCheck(previewRule, expiryIso, timezone, hours, now);
+        if (!nextFireTime) skippedReason = 'already_passed';
+      }
+      return {
+        index,
+        type: r.type,
+        value: r.value,
+        unit: r.unit,
+        repeatInterval: r.repeatInterval,
+        repeatUntil: r.repeatUntil,
+        isEnabled: r.isEnabled,
+        nextFireTime,
+        skippedReason
+      };
+    });
+
+    const upcoming = perRule
+      .filter((item) => item.nextFireTime !== null)
+      .sort((a, b) => new Date(a.nextFireTime as string).getTime() - new Date(b.nextFireTime as string).getTime());
+
+    return json({
+      success: true,
+      timezone,
+      timezoneDisplay: formatTimezoneDisplay(timezone),
+      notificationHours: hours,
+      enabledNotifiers,
+      enabledNotifierCount: enabledNotifiers.length,
+      nextFireTime: upcoming[0] ? upcoming[0].nextFireTime : null,
+      perRule
+    });
   }
 
   // /subscriptions/:id/next-reminder

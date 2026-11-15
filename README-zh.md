@@ -1,4 +1,7 @@
-# SubsTracker
+<div align="center">
+  <img src="public/logo.svg" alt="SubsTracker Logo" width="84" height="84" />
+  <h1>SubsTracker</h1>
+</div>
 
 > English: [README.md](README.md)
 

@@ -8,23 +8,43 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
   ${themeResources}
   <style>
-    .page-wrap { max-width: 860px; margin: 0 auto; padding: var(--sp-5) var(--sp-4) var(--sp-6); }
+    .page-wrap { max-width: 860px; width: 100%; box-sizing: border-box; margin: 0 auto; padding: var(--sp-5) var(--sp-4) var(--sp-6); }
     .page-title { font-size: var(--fs-2xl); font-weight: 800; letter-spacing: -0.01em; color: var(--text-main); }
     .page-sub { font-size: var(--fs-sm); color: var(--text-muted); margin-top: var(--sp-1); }
-    .anchor-nav { position: sticky; top: 0; z-index: 20; padding: var(--sp-3) 0; }
+    .anchor-nav {
+      position: sticky; top: var(--sp-2); z-index: 20;
+      padding: var(--sp-2) var(--sp-3); margin-bottom: var(--sp-4);
+      background: var(--nav-glass);
+      -webkit-backdrop-filter: blur(18px) saturate(160%);
+      backdrop-filter: blur(18px) saturate(160%);
+      border: 1px solid var(--hairline); border-radius: var(--radius-l);
+      box-shadow: var(--sh-card);
+    }
     .anchor-nav a.st-fchip { text-decoration: none; }
     .st-group {
       background: var(--surface); border: 1px solid var(--hairline);
       border-radius: var(--radius-l); box-shadow: var(--sh-card);
       padding: var(--sp-5); margin-bottom: var(--sp-4);
-      scroll-margin-top: 76px;
+      scroll-margin-top: 76px; min-width: 0; max-width: 100%;
+    }
+    .st-field, .sub-block { min-width: 0; max-width: 100%; }
+    @media (max-width: 767px) {
+      .anchor-nav { top: calc(56px + var(--sp-2)); }
+      .st-group { scroll-margin-top: 132px; }
+    }
+    @media (max-width: 480px) {
+      .page-wrap { padding: var(--sp-4) var(--sp-3) var(--sp-5); }
+      .st-group { padding: var(--sp-4); }
+    }
+    @media (prefers-reduced-transparency: reduce) {
+      .anchor-nav { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--surface); }
     }
     .st-group-title { font-size: var(--fs-lg); font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: var(--sp-2); }
     .st-group-desc { font-size: var(--fs-sm); color: var(--text-muted); margin: var(--sp-1) 0 var(--sp-4); line-height: 1.55; }
     .st-group-foot { display: flex; align-items: center; gap: var(--sp-2); border-top: 1px solid var(--hairline); padding-top: var(--sp-3); margin-top: var(--sp-2); }
     .group-alert { margin-bottom: var(--sp-3); }
-    .secret-row { display: flex; gap: var(--sp-2); align-items: center; }
-    .secret-row .st-input { flex: 1; min-width: 0; }
+    .secret-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+    .secret-row .st-input { flex: 1 1 160px; min-width: 0; }
     .field-label-row { display: flex; align-items: center; gap: var(--sp-2); }
     /* 全局默认规则编辑器（与订阅页规则编辑器同构，样式在本页内自带） */
     .rules-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-2); }
@@ -46,7 +66,8 @@
     .rules-empty { font-size: var(--fs-sm); color: var(--text-muted); border: 1px dashed var(--hairline-strong); border-radius: var(--radius-m); padding: var(--sp-3); line-height: 1.6; }
     .readonly-line { font-size: var(--fs-sm); color: var(--text-main); line-height: 1.6; }
     .readonly-line a { color: var(--accent); text-decoration: none; font-weight: 600; }
-    .radio-row, .check-row { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-main); padding: 4px 0; cursor: pointer; }
+    .radio-row, .check-row { display: flex; align-items: flex-start; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-main); padding: 4px 0; cursor: pointer; line-height: 1.45; }
+    .radio-row input, .check-row input { margin-top: 3px; flex: none; }
     .sub-block { border: 1px solid var(--hairline); border-radius: var(--radius-m); padding: var(--sp-4); margin-bottom: var(--sp-3); }
     .sub-block-title { font-size: var(--fs-base); font-weight: 600; color: var(--text-main); margin-bottom: var(--sp-2); }
   </style>
@@ -267,20 +288,25 @@
       if (!res.ok) throw new Error('配置加载失败（HTTP ' + res.status + '）');
       return res.json();
     }
-    /* 一域一存：先拉最新配置作基线，合并本组 patch 后整表提交，防双标签覆盖（N6）。 */
-    async function saveConfigPatch(patch, clearSecrets) {
-      const base = await fetchConfig();
-      const body = {};
-      Object.keys(base).forEach(function(k) { if (!/_CONFIGURED$/.test(k)) body[k] = base[k]; });
-      Object.keys(patch || {}).forEach(function(k) { body[k] = patch[k]; });
-      if (clearSecrets && clearSecrets.length) body.CLEAR_SECRET_FIELDS = clearSecrets;
-      const res = await apiFetch('/api/config', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    /* 一域一存：串行队列 + 先拉最新配置作基线，合并本组 patch 后整表提交，防双标签与并发覆盖（N6）。 */
+    var saveQueue = Promise.resolve();
+    function saveConfigPatch(patch, clearSecrets) {
+      var task = saveQueue.then(async function() {
+        const base = await fetchConfig();
+        const body = {};
+        Object.keys(base).forEach(function(k) { if (!/_CONFIGURED$/.test(k)) body[k] = base[k]; });
+        Object.keys(patch || {}).forEach(function(k) { body[k] = patch[k]; });
+        if (clearSecrets && clearSecrets.length) body.CLEAR_SECRET_FIELDS = clearSecrets;
+        const res = await apiFetch('/api/config', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        const j = await res.json().catch(function() { return {}; });
+        if (!res.ok || !j.success) throw new Error(j.message || ('保存失败（HTTP ' + res.status + '）'));
+        await ST.loadConfig(true).catch(function() {});
+        return j;
       });
-      const j = await res.json().catch(function() { return {}; });
-      if (!res.ok || !j.success) throw new Error(j.message || ('保存失败（HTTP ' + res.status + '）'));
-      await ST.loadConfig(true).catch(function() {});
-      return j;
+      saveQueue = task.catch(function() {});
+      return task;
     }
 
     /* ---------- 分组保存框架：一组一存、dirty 拦截（A9/A28） ---------- */
@@ -930,6 +956,14 @@
           if (typeof window.updateAppTheme === 'function') window.updateAppTheme(themeModeValue);
           refreshGroupDirty('appearance');
         });
+      });
+      window.addEventListener('st:themechange', function(e) {
+        var m = e && e.detail && e.detail.mode;
+        if (m && m !== themeModeValue) {
+          themeModeValue = m;
+          syncThemeSeg();
+          refreshGroupDirty('appearance');
+        }
       });
       document.getElementById('thirdPartyToken').addEventListener('input', function() {
         if (document.getElementById('thirdPartyToken').value.trim()) tokenClearMarked = false;

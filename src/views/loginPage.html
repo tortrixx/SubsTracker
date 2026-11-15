@@ -31,6 +31,14 @@
     }
     .login-box h1 { letter-spacing: -0.01em; }
     .login-box { position: relative; }
+    .login-brand-logo {
+      width: 52px; height: 52px; margin: 0 auto 14px; display: block;
+      border-radius: 14px;
+      box-shadow: 0 8px 20px rgba(0, 113, 227, 0.24), 0 2px 6px rgba(15, 23, 42, 0.08);
+    }
+    html.dark .login-brand-logo {
+      box-shadow: 0 8px 24px rgba(41, 151, 255, 0.28), 0 2px 8px rgba(0, 0, 0, 0.45);
+    }
     /* 登录卡右上角主题切换钮（浅/深两态，走 updateAppTheme/themeMode 既有机制） */
     .login-theme-btn {
       position: absolute; top: 14px; right: 14px; z-index: 2;
@@ -95,7 +103,8 @@
       <i class="fas fa-moon"></i>
     </button>
     <div class="text-center mb-8">
-      <h1 class="text-2xl font-bold text-gray-800"><i class="fas fa-calendar-check mr-2"></i>订阅管理系统</h1>
+      <img src="/logo.svg" alt="" aria-hidden="true" width="52" height="52" class="login-brand-logo">
+      <h1 class="text-2xl font-bold text-gray-800">订阅管理系统</h1>
       <p class="text-gray-600 mt-2">登录管理您的订阅提醒</p>
     </div>
     

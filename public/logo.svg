@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none" role="img" aria-label="SubsTracker Logo">
+  <defs>
+    <linearGradient id="st-logo-bg" x1="16" y1="8" x2="112" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1E90FF"/>
+      <stop offset="55%" stop-color="#0071E3"/>
+      <stop offset="100%" stop-color="#0055B8"/>
+    </linearGradient>
+    <radialGradient id="st-logo-glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(90 36.8) scale(12)">
+      <stop offset="0%" stop-color="#8BE9FF" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#8BE9FF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="34" fill="url(#st-logo-bg)"/>
+  <rect x="6" y="6" width="116" height="116" rx="32" stroke="#FFFFFF" stroke-opacity="0.22" stroke-width="2"/>
+  <path d="M 70.8 32.0 A 21.6 17.0 0 1 0 60.8 64.0 A 21.6 17.0 0 1 1 50.8 96.0" stroke="#FFFFFF" stroke-width="10.8" stroke-linecap="round"/>
+  <circle cx="90" cy="36.8" r="12" fill="url(#st-logo-glow)"/>
+  <circle cx="90" cy="36.8" r="7.6" fill="#8BE9FF"/>
+</svg>

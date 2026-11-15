@@ -386,4 +386,78 @@ describe('新增聚合与触发路由', () => {
     expect(body.log).toBeTruthy();
     expect(typeof body.log.checkedCount).toBe('number');
   });
+
+  describe('POST /api/reminders/preview', () => {
+    it('未授权 → 401', async () => {
+      const res = await app.request('/api/reminders/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expiryDate: '2026-11-20', rules: [] })
+      }, env);
+      expect(res.status).toBe(401);
+    });
+
+    it('按系统时区与发送时段预测触发时间，且不发通知/不写日志', async () => {
+      const cookie = await loginCookie();
+      await env.SUBSCRIPTIONS_KV.put(
+        'config',
+        JSON.stringify({
+          ADMIN_USERNAME: 'admin',
+          ADMIN_PASSWORD: 'password',
+          JWT_SECRET: 'k',
+          TIMEZONE: 'Asia/Shanghai',
+          NOTIFICATION_HOURS: ['09'],
+          ENABLED_NOTIFIERS: ['telegram'],
+          TG_BOT_TOKEN: 'B',
+          TG_CHAT_ID: 'C'
+        })
+      );
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-11-10T00:00:00Z'));
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      const res = await app.request('/api/reminders/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({
+          expiryDate: '2026-11-20',
+          isActive: true,
+          autoRenew: true,
+          rules: [
+            { type: 'before_expiry', value: 3, unit: 'days', isEnabled: true },
+            { type: 'after_expiry', value: 1, unit: 'days', repeatInterval: 24, isEnabled: true }
+          ]
+        })
+      }, env);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.timezone).toBe('Asia/Shanghai');
+      expect(body.enabledNotifierCount).toBe(1);
+      // Asia/Shanghai 2026-11-17 09:00 = 2026-11-17T01:00:00.000Z
+      expect(body.nextFireTime).toBe('2026-11-17T01:00:00.000Z');
+      expect(body.perRule[0].nextFireTime).toBe('2026-11-17T01:00:00.000Z');
+      expect(body.perRule[1].nextFireTime).toBeNull();
+      expect(body.perRule[1].skippedReason).toBe('auto_renew');
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      const { logs } = await (await app.request('/api/notification-logs', { headers: { Cookie: cookie } }, env)).json();
+      expect(logs).toHaveLength(0);
+    });
+
+    it('非法规则返回 400（共享 validateReminderRules）', async () => {
+      const cookie = await loginCookie();
+      const res = await app.request('/api/reminders/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({
+          expiryDate: '2026-11-20',
+          rules: [{ type: 'before_expiry', value: -1, unit: 'days', isEnabled: true }]
+        })
+      }, env);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.success).toBe(false);
+    });
+  });
 });
