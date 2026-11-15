@@ -83,22 +83,6 @@ function resolveReminderSetting(subscription: ReminderSettingInput | null | unde
   return { unit, value };
 }
 
-function shouldTriggerReminder(reminder: ReminderSetting | null | undefined, daysDiff: number, hoursDiff: number): boolean {
-  if (!reminder) {
-    return false;
-  }
-  if (reminder.unit === 'hour') {
-    if (reminder.value === 0) {
-      return hoursDiff >= 0 && hoursDiff < 1;
-    }
-    return hoursDiff >= 0 && hoursDiff <= reminder.value;
-  }
-  if (reminder.value === 0) {
-    return daysDiff === 0;
-  }
-  return daysDiff >= 0 && daysDiff <= reminder.value;
-}
-
 function formatMatchedReminderRule(rule: MatchedReminderRule): string {
   if (rule.type === 'on_expiry') return '到期当天';
   if (rule.type === 'after_expiry') {
@@ -149,4 +133,4 @@ function formatNotificationContent(subscriptions: NotificationSubscription[], co
   return content;
 }
 
-export { resolveReminderSetting, shouldTriggerReminder, formatNotificationContent, formatMatchedReminderRule, formatLunarExpiryText };
+export { resolveReminderSetting, formatNotificationContent, formatMatchedReminderRule, formatLunarExpiryText };

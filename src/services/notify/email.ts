@@ -12,7 +12,6 @@
  */
 import { ok, fail, errorMessage, stripMarkdown, fetchWithTimeout } from './channel.js';
 import type { Channel, ChannelMetadata } from './channel.js';
-import type { AppConfig } from '../../data/config.js';
 import { formatLocalDate, formatTimeInTimezone, formatTimezoneDisplay } from '../../core/time.js';
 import { formatAmount } from '../../core/currency-format.js';
 import { formatNotificationContent, formatMatchedReminderRule, formatLunarExpiryText } from './reminder.js';
@@ -20,7 +19,6 @@ import { formatNotificationContent, formatMatchedReminderRule, formatLunarExpiry
 const INK = '#1F2225';
 const MUTED = '#8A8F94';
 const HAIRLINE = '#E8E8E6';
-const LINK = '#087FAA';
 const FONT = `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
 
 /** 状态胶囊配色：即将到期=薄荷绿、今天到期=琥珀、已过期=红 */
@@ -404,10 +402,3 @@ export const emailChannel: Channel = {
     );
   }
 };
-
-/** @deprecated 旧版兼容函数 */
-export async function sendEmailNotification(title: string, content: string, config: AppConfig): Promise<boolean> {
-  const r = await emailChannel.send({ title, content }, config);
-  if (!r.success) console.error('[Email]', r.error);
-  return r.success;
-}

@@ -7,7 +7,6 @@
  */
 import { ok, fail, errorMessage, stripMarkdown, fetchWithTimeout, isSafeHttpUrl, encodeBasicAuth, redactSecrets } from './channel.js';
 import type { Channel } from './channel.js';
-import type { AppConfig } from '../../data/config.js';
 
 export const barkChannel: Channel = {
   name: 'bark',
@@ -85,10 +84,3 @@ export const barkChannel: Channel = {
     );
   }
 };
-
-/** @deprecated 旧版兼容函数 */
-export async function sendBarkNotification(title: string, content: string, config: AppConfig): Promise<boolean> {
-  const r = await barkChannel.send({ title, content }, config);
-  if (!r.success) console.error('[Bark]', r.error);
-  return r.success;
-}

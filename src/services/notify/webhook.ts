@@ -4,7 +4,7 @@
  * 支持自定义请求方法、Header、消息模板（{{title}} / {{content}} / {{tags}} 等）。
  */
 import { ok, fail, errorMessage, fetchWithTimeout, isSafeHttpUrl } from './channel.js';
-import type { Channel, ChannelMetadata, ChannelPayload } from './channel.js';
+import type { Channel, ChannelPayload } from './channel.js';
 import type { AppConfig } from '../../data/config.js';
 import { formatLocalDate } from '../../core/time.js';
 
@@ -128,10 +128,3 @@ export const webhookChannel: Channel = {
     );
   }
 };
-
-/** @deprecated 旧版兼容函数 */
-export async function sendWebhookNotification(title: string, content: string, config: AppConfig, metadata: ChannelMetadata = {}): Promise<boolean> {
-  const r = await webhookChannel.send({ title, content, metadata }, config);
-  if (!r.success) console.error('[Webhook]', r.error);
-  return r.success;
-}

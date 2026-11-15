@@ -10,8 +10,8 @@
  * - 单条读写通过 repo.getById / repo.save，不再加载整个数组，降低并发风险
  * - 业务逻辑保持兼容，外部 API 签名不变
  *
- * 注意：reminderUnit/reminderValue 字段保留兼容，Task 8 会在新 API 引入
- * 多提醒规则（reminder_rules:{id}），届时 Service 层会同步两边。
+ * 注意：reminderUnit/reminderValue 字段保留兼容，多提醒规则通过
+ * reminder_rules:{id} 管理并在变更时保持同步。
  */
 
 import { getConfig } from './config.js';

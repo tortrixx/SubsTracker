@@ -229,6 +229,25 @@ describe('POST /api/test-notification (WPUSH)', () => {
     expect(sentBody).not.toHaveProperty('topic_code');
   });
 
+  it('非邮件渠道失败时保留真实脱敏错误信息并落测试日志', async () => {
+    const cookie = await loginCookie();
+    const response = await app.request('/api/test-notification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ type: 'bark', BARK_SERVER: 'ftp://invalid.example.com' })
+    }, env);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.success).toBe(false);
+    expect(body.message).toContain('http/https');
+
+    const logs = await queryNotifyLogs(env, { channel: 'bark' });
+    const testLogs = logs.filter((l) => l.ruleId === 'test');
+    expect(testLogs.length).toBeGreaterThanOrEqual(1);
+    expect(testLogs[0].status).toBe('failed');
+    expect(testLogs[0].error).toContain('http/https');
+  });
+
   it('拒绝无效 TIMEZONE 或非 http/https APP_URL，并返回默认凭据提示标记', async () => {
     const cookie = await loginCookie();
     const getRes = await app.request('/api/config', { headers: { Cookie: cookie } }, env);

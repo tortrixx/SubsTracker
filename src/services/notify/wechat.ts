@@ -5,7 +5,6 @@
  */
 import { ok, fail, errorMessage, stripMarkdown, fetchWithTimeout, isSafeHttpUrl } from './channel.js';
 import type { Channel } from './channel.js';
-import type { AppConfig } from '../../data/config.js';
 
 export const wecomChannel: Channel = {
   name: 'wechatbot',
@@ -77,10 +76,3 @@ export const wecomChannel: Channel = {
     );
   }
 };
-
-/** @deprecated 旧版兼容函数 */
-export async function sendWechatBotNotification(title: string, content: string, config: AppConfig): Promise<boolean> {
-  const r = await wecomChannel.send({ title, content }, config);
-  if (!r.success) console.error('[企业微信]', r.error);
-  return r.success;
-}
