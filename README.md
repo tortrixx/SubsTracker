@@ -1,134 +1,157 @@
 <div align="center">
-  <img src="public/logo.svg" alt="SubsTracker Logo" width="84" height="84" />
+  <img src="public/logo.svg" alt="SubsTracker" width="72" height="72" />
   <h1>SubsTracker</h1>
+  <p>Personal subscription tracker and expiry reminder service with multi-channel notifications.</p>
+  <p>
+    <a href="https://github.com/tortrixx/SubsTracker/actions/workflows/test.yml"><img src="https://github.com/tortrixx/SubsTracker/actions/workflows/test.yml/badge.svg" alt="Test" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-0071E3.svg" alt="License: MIT" /></a>
+  </p>
+  <p>
+    <strong>English</strong> | <a href="README-zh.md">简体中文</a>
+    &nbsp;·&nbsp;
+    <a href="#preview">Preview</a>
+    &nbsp;·&nbsp;
+    <a href="#quick-start">Quick Start</a>
+    &nbsp;·&nbsp;
+    <a href="#architecture">Architecture</a>
+  </p>
 </div>
 
-> 中文版：[README-zh.md](README-zh.md)
+Track recurring renewals and free trials in one place, evaluate reminder rules every hour in your local timezone, and deliver alerts across 11 notification channels. The same TypeScript codebase runs on **Cloudflare Workers + KV** or a self-hosted **Node.js 24 + SQLite** server.
 
-**A timed-trigger platform that happens to ship with subscriptions as its first plugin.**
+## Preview
 
-SubsTracker tracks recurring deadlines — today those are your subscriptions — evaluates reminder rules against them every hour, and dispatches notifications through 11 channels. It is built around a simple idea: *everything is a plugin around timed triggers*. Subscription expiry is the first trigger source; scheduled email and task reminders are on the [roadmap](#roadmap).
-
-One TypeScript codebase, two runtimes: deploy the exact same code to **Cloudflare Workers + KV** or to **your own Node server + SQLite**. Storage is a pluggable port, not a hard-coded dependency.
+<p>
+  <img src=".github/assets/preview-dashboard.png" alt="SubsTracker Dashboard" />
+</p>
+<p>
+  <img src=".github/assets/preview-subscriptions.png" alt="SubsTracker Subscriptions Management" />
+</p>
+<p align="center">
+  <img src=".github/assets/preview-mobile.png" alt="SubsTracker Mobile Dark Mode" width="300" />
+</p>
 
 ## Features
 
-- **Subscription management** — name, amount, currency, billing cycle (day / month / year, plus lunar cycles), trial flag, categories, payment history, and renewal with preview and undo.
-- **Reminder rule engine** — per-subscription rules: *N* days/hours before expiry, on the day, or repeating after expiry. Ships with a preset (7 / 3 / 1 days before + on the day).
-- **Editable global default rules** — the preset new subscriptions inherit is a real setting (`DEFAULT_REMINDER_RULES`), editable in the UI. An empty set is a deliberate choice and is honoured as-is.
-- **11 notification channels** — Email, Telegram, WeCom (WeChat Work), Bark, NotifyX, ServerChan, PushPlus, ntfy, Gotify, WPush, and a generic Webhook. Per-channel config drawers, enable switches, and one-click send tests that go through the real delivery pipeline.
-- **Sending hours** — restrict delivery to chosen hours of the day (in the configured timezone). Empty means *unrestricted*.
-- **Logs & health** — every send and every scheduler run is logged and filterable; a health line shows the last tick result on every page.
-- **Lunar calendar** — lunar-cycle subscriptions (1900–2100), multi-currency amounts with monthly spend summaries.
-- **Dual runtime, pluggable storage** — Cloudflare KV, SQLite (`node:sqlite`), or in-memory, behind one `StoragePort` interface with a conformance check.
+**Subscriptions & Spending**
+- Manage billing cycles (day, month, year), end-of-month clamping, lunar calendar cycles (1900–2100), categories, and free trials.
+- Multi-currency amounts (`CNY`, `USD`, `HKD`, `TWD`, `JPY`, `EUR`, `GBP`, `KRW`, `TRY`) with monthly spend estimates.
+- Renewal previews with next-expiry calculation, payment history records, and one-step undo.
+
+**Reminder Rules & Delivery**
+- Per-subscription rules (*N* days/hours before expiry, on the due date, or repeating after expiry) with live next-trigger prediction.
+- Editable global default rule template (`null` falls back to 7/3/1 days before + due day; `[]` deliberately assigns no rules).
+- Configurable sending window (`NOTIFICATION_HOURS`) in your chosen timezone; empty leaves delivery unrestricted across every hourly tick.
+- 11 built-in channels (`Email / Resend`, `Telegram`, `WeCom`, `Bark`, `NotifyX`, `ServerChan`, `PushPlus`, `ntfy`, `Gotify`, `WPush`, `Webhook`) with secret masking, isolated send tests, and origin-tagged activity logs.
+
+**Operations & Portability**
+- Full JSON backup export and restore (merge or overwrite) with automatic schema migration.
+- Health probe (`/healthz`), timezone diagnostics (`/debug`), and third-party notification trigger API (`/api/notify/:token`).
 
 ## Quick Start
 
-### Option A — Cloudflare Workers
+### Option A — Cloudflare Workers + KV
 
-Prerequisites: Node.js, a Cloudflare account, Wrangler (via `npx`).
-
-```bash
-npm install
-npm run deploy:safe   # creates the KV namespace (scripts/setup-kv.cjs), then deploys
-# or, if KV is already set up:
-npm run deploy
-```
-
-`wrangler.toml` points at `src/index.ts`; Wrangler compiles the TypeScript directly — no pre-build needed. An hourly Cron Trigger drives the scheduler.
-The setup script preserves existing `SUBSCRIPTIONS_KV` IDs and other KV bindings; it stops on ambiguous or unsupported configurations.
-
-### Option B — Self-hosted Node server
-
-Prerequisites: **Node.js 24** (the SQLite adapter uses the built-in `node:sqlite`).
+Prerequisites: Node.js 24+, a Cloudflare account, and Wrangler (`npx`).
 
 ```bash
 npm install
-npm run build         # tsc → dist/ (views and the HTML loader are copied alongside)
-npm start             # optionally set PORT / HOST / SQLITE_PATH in the environment
+npm run deploy:safe   # creates SUBSCRIPTIONS_KV if missing, then runs wrangler deploy
 ```
 
-For production, a ready-made systemd unit ships in [`deploy/substracker.service`](deploy/substracker.service) (hardened, `Restart=always`, reads `substracker.env`). The Node composition root aligns its scheduler to the top of each hour and exposes `/healthz` for monitoring.
+- Subsequent deployments only need `npm run deploy`.
+- `scripts/setup-kv.cjs` preserves existing `SUBSCRIPTIONS_KV` bindings and aborts on ambiguous configs.
+- An hourly Cron Trigger (`0 * * * *` in `wrangler.toml`) runs reminder evaluations automatically.
+- Local Workers development: `npx wrangler dev --config wrangler.dev.toml` (uses Miniflare with a local KV placeholder).
 
-### Option C — Docker Compose
+### Option B — Self-Hosted (Docker Compose or Node.js 24)
 
-Run `docker compose up -d --build` and open `http://127.0.0.1:3200`. SQLite is stored in the `substracker-data` volume. The default port is bound to localhost; use a reverse proxy and HTTPS for remote access. `docker compose down -v` removes the volume.
+**Docker Compose** (stores SQLite in the `substracker-data` volume):
 
-### First login
+```bash
+docker compose up -d --build
+# Open http://127.0.0.1:3200
+```
 
-Sign in with the default account **`admin` / `password`**, then change the password immediately under **Settings → Account security**. All channel credentials are configured later in the UI under **Channels** — no secrets live in the repo.
+> By default Compose binds `127.0.0.1:3200`. Place a reverse proxy with HTTPS in front before exposing to the public internet.
+
+**Node.js 24 + SQLite**:
+
+```bash
+npm ci
+npm run build         # compiles TypeScript and copies views/loader into dist/
+npm start             # starts dist/server.js on http://127.0.0.1:3200
+```
+
+Process-level variables (`PORT`, `HOST`, `STORAGE_DRIVER`, `SQLITE_PATH`, `SCHEDULER_ENABLED`) live in `substracker.env`. A hardened systemd unit and env example ship in [`deploy/substracker.service`](deploy/substracker.service) and [`deploy/substracker.env.example`](deploy/substracker.env.example).
+
+### First Login
+
+> **Security notice:** Sign in with the default account **`admin` / `password`**, then change the password immediately under **Settings → Account security**. All channel tokens and API keys are entered in the **Channels** UI and stored only in your deployment storage.
 
 ## Configuration
 
-Runtime configuration is stored in the app's own storage and edited in **Settings** (a small set of process-level variables — `PORT`, `HOST`, `STORAGE_DRIVER`, `SQLITE_PATH` — lives in `substracker.env` for the Node runtime). Key items:
+Most runtime settings live in app storage and are edited from the web UI:
 
-| Key | Meaning |
-| --- | --- |
-| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | Admin account. Change the password after first login. |
-| `TIMEZONE` | All dates, countdowns and sending hours are interpreted in this zone (e.g. `Asia/Shanghai`). Edited in Settings only — it is the single source of truth for the whole UI. |
-| `APP_URL` | Public base URL of this deployment. When set, notification emails include an "open subscription manager" button. |
-| `NOTIFICATION_HOURS` | Hours of the day when sending is allowed, e.g. `["08","09","22"]`. **Empty = unrestricted** (every hourly tick may send). Edited on the Channels page. |
-| `DEFAULT_REMINDER_RULES` | The rule template applied to newly created subscriptions that don't specify their own rules. `null` (never configured) falls back to the built-in preset (7/3/1 days before + on the day); an empty array means new subscriptions deliberately get **no** rules. |
-| `THIRD_PARTY_API_TOKEN` | Token for the third-party trigger API (`/api/thirdparty/notify`). |
-| Channel credentials | Per channel, set in the Channels UI: `RESEND_API_KEY` + `EMAIL_FROM`/`EMAIL_TO` (email), `TG_BOT_TOKEN` + `TG_CHAT_ID` (Telegram), `NOTIFYX_API_KEY` (NotifyX), `WECHATBOT_WEBHOOK` (WeCom), `BARK_DEVICE_KEY` (Bark), `SERVERCHAN_SENDKEY` (ServerChan), `PUSHPLUS_TOKEN` (PushPlus), `NTFY_TOPIC` (ntfy), `GOTIFY_SERVER_URL` + `GOTIFY_APP_TOKEN` (Gotify), `WPUSH_APIKEY` (WPush), and `WEBHOOK_URL` (Webhook). Values are never committed — they exist only in your deployment's storage. |
+| Setting | Purpose | Where to edit |
+| --- | --- | --- |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | Console credentials and default-password banner state | **Settings → Account security** |
+| `TIMEZONE` | Single source of truth for expiry countdowns, rules, and sending hours (e.g. `Asia/Shanghai`) | **Settings** |
+| `NOTIFICATION_HOURS` | Allowed sending hours in `TIMEZONE` (e.g. `["08","21"]`); **empty = unrestricted** | **Channels** |
+| `DEFAULT_REMINDER_RULES` | Template copied to new subscriptions that omit rules (`[]` creates none; invalid rules return HTTP `400`) | **Settings** |
+| `APP_URL` / `THIRD_PARTY_API_TOKEN` | Public base URL for email links and bearer token for `/api/notify/:token` | **Settings** |
+| Channel credentials | Configs for all 11 notification channels (masked in API responses) | **Channels** |
 
-Invalid `DEFAULT_REMINDER_RULES` payloads are rejected as a whole (HTTP 400); the previously stored value is kept.
+<details>
+<summary>How hourly scheduling, retries, and backups behave</summary>
 
-## How Reminders Work
+1. Once per hour (Workers Cron Trigger or Node hour-aligned timer), the scheduler evaluates active subscriptions against their rules in `TIMEZONE`.
+2. If `NOTIFICATION_HOURS` is non-empty and the current local hour is excluded, that rule check skips sending.
+3. Each enabled channel is deduplicated independently. Failed channels retry only on a subsequent tick where the rule still matches within an open window. Because Cloudflare KV has no atomic transactions, concurrent schedulers cannot guarantee strictly-once delivery.
+4. JSON backups include subscriptions, payment history, reminder rules, and config (secrets optional), while notification logs, scheduler logs, and deduplication state are excluded.
 
-1. **Tick** — once per hour (Workers Cron Trigger, or the Node scheduler aligned to the hour) the scheduler runs.
-2. **Evaluate** — each active subscription's reminder rules are evaluated against its (next) expiry date in the configured timezone.
-3. **Filter** — if `NOTIFICATION_HOURS` is non-empty and the current hour is not in it, that check skips sending.
-4. **Dispatch** — due reminders are sent through every enabled channel. The notification title leads with the most urgent subscription.
-5. **Retry** — each channel is deduplicated separately. Failed channels retry only on a later check where the rule still matches and the sending window is open; a single daily window may leave no retry opportunity. Concurrent schedulers on KV cannot guarantee exactly-once delivery.
-6. **Log** — sends and scheduler runs land in the Activity page, tagged by origin (scheduled rule, `manual-test`, channel `test`, or `thirdparty`).
-
-Export a backup before upgrading or moving between runtimes. The JSON contains subscriptions, payment history, rules and configuration (secrets optional), but not notification logs, scheduler logs or deduplication state; a matching reminder may be sent again after migration.
+</details>
 
 ## Architecture
 
-Ports-and-adapters: business logic depends only on abstractions; the two entry points are thin composition roots.
+SubsTracker follows a ports-and-adapters layout so one strict TypeScript Hono application runs identically on Cloudflare Workers and Node.js 24:
 
-- `src/index.ts` — Cloudflare Workers root (KV binding is the storage implementation, zero adapter code).
-- `src/server.ts` — Node root (`@hono/node-server`, static views, hour-aligned scheduler, graceful shutdown).
-- `src/platform/storage/storage-port.ts` — the `StoragePort` interface (a KV-shaped subset: `get/put/delete/list` + TTL); adapters in the same directory (`sqlite-storage.ts`, `memory-storage.ts`). Verify any adapter with `npm run check:storage`.
-- `src/views/` — five pages (Dashboard, Subscriptions, Channels, Activity, Settings) plus `theme-resources.html`, the shared design system and `window.ST` runtime the pages are built on.
+```mermaid
+flowchart LR
+  W["src/index.ts (Workers + Cron)"] --> APP["src/app.ts (Hono + Middleware)"]
+  N["src/server.ts (Node.js 24 + serveStatic)"] --> APP
+  APP --> API["src/api & src/services (Rules, Scheduler, 11 Channels)"]
+  API --> PORT["StoragePort (get / put / delete / list)"]
+  PORT --> KV["Cloudflare KV"]
+  PORT --> SQLITE["SQLite (node:sqlite)"]
+  PORT --> MEM["In-Memory (Testing)"]
+```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
+For storage contracts, migration flow, `ruleId` conventions, and view loading details, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Development
 
+Prerequisites: **Node.js 24+**.
+
 ```bash
-npm run dev            # wrangler dev (Workers runtime)
-npm run build          # type-check build → dist/ for the Node runtime
-npm test               # vitest suite
-npm run lint           # tsc --noEmit (strict)
-npm run check:storage  # storage-adapter conformance checks against dist/
-npm run check:server   # Node HTTP and static-asset smoke test
-npm run check:setup    # KV configuration preservation tests
-npm run check:ui       # asynchronous UI state tests
+npm install
+npm run lint           # tsc --noEmit (TypeScript strict, 0 errors)
+npm test               # Vitest suite running inside Cloudflare workerd runtime
+npm run build          # Build dist/ for Node.js
+npm run check:storage  # StoragePort conformance checks against built dist/
+npm run check:server   # Node + SQLite HTTP & static-asset smoke test
+npm run check:setup    # Wrangler KV setup preservation tests
+npm run check:ui       # Async UI race-condition tests
 ```
 
-TypeScript is `strict` across the repo — no `@ts-ignore`, no implicit `any`. Changes should land with the full suite green.
+Contributor invariants and known traps are documented in [AGENTS.md](AGENTS.md).
 
 ## Roadmap
 
-SubsTracker is evolving from a subscription notifier into the timed-trigger platform described above, in small, independently shippable steps:
+- **Shipped:** Dual-runtime single codebase (`Workers + KV` / `Node.js 24 + SQLite`), `StoragePort` abstraction, configurable reminder rules with live preview, 11 channels, JSON backup/restore.
+- **Planned:** Declarative channel plugin registry with schema-driven settings drawers, and decoupling the trigger kernel to support additional timed reminder sources (scheduled emails and task reminders).
 
-1. **Channel registry** — give all 11 channels manifests and a plugin registry; dispatch resolves channels from the registry. *(planned)*
-2. **Kernel split** — separate the scheduler into a trigger kernel (`runTick`) and the subscription plugin's evaluator. *(planned)*
-3. **Pipeline promotion** — executors take (event, binding); channel adapters become action plugins. *(planned)*
-4. **Schema-driven settings** — channel drawers generated from config schemas. *(planned; today's drawers are the hand-written prototype)*
-5. **Scheduled email plugin** — the first declarative trigger source: drafts, send-at scheduling, a `send-mail` action. *(planned)*
-6. **Task reminders plugin** — a second declarative source, reusing the offset/rule editor. *(planned)*
-7. **Unified activity log** — plugin-origin filtering across all sources. *(optional, last)*
+## Acknowledgements & License
 
-Already in place as groundwork: dual-runtime single codebase, pluggable storage, structured notification payloads, and editable global default rules.
-
-## Credits
-
-Forked from [wangwangit/SubsTracker](https://github.com/wangwangit/SubsTracker). The design language of the v3 UI borrows from Meta's Astryx design system and Craft's glass aesthetic.
-
-## License
-
-[MIT](LICENSE)
+- Forked from [wangwangit/SubsTracker](https://github.com/wangwangit/SubsTracker).
+- Released under the [MIT License](LICENSE) (`Copyright (c) 2025 一只会飞的旺旺`).

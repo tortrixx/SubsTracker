@@ -1,134 +1,157 @@
 <div align="center">
-  <img src="public/logo.svg" alt="SubsTracker Logo" width="84" height="84" />
+  <img src="public/logo.svg" alt="SubsTracker" width="72" height="72" />
   <h1>SubsTracker</h1>
+  <p>简洁的个人订阅管理与到期提醒服务，支持多渠道通知与定时规则触发。</p>
+  <p>
+    <a href="https://github.com/tortrixx/SubsTracker/actions/workflows/test.yml"><img src="https://github.com/tortrixx/SubsTracker/actions/workflows/test.yml/badge.svg" alt="Test" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-0071E3.svg" alt="License: MIT" /></a>
+  </p>
+  <p>
+    <a href="README.md">English</a> | <strong>简体中文</strong>
+    &nbsp;·&nbsp;
+    <a href="#界面预览">界面预览</a>
+    &nbsp;·&nbsp;
+    <a href="#快速开始">快速开始</a>
+    &nbsp;·&nbsp;
+    <a href="#架构概览">架构概览</a>
+  </p>
 </div>
 
-> English: [README.md](README.md)
+在一个控制台集中管理周期性订阅与试用期，按本地时区每小时求值提醒规则，并通过 11 个通知渠道触达。同一套 TypeScript 代码可直接部署到 **Cloudflare Workers + KV**，也可自托管运行在 **Node.js 24 + SQLite**。
 
-**一个围绕「定时触发」设计的平台——订阅提醒只是它的第一个插件。**
+## 界面预览
 
-SubsTracker 管理一切周期性截止时间（今天是你的订阅），每小时求值一次提醒规则，并通过 11 个通知渠道发送。它遵循「万物皆插件」的设计：订阅到期是第一个触发源，定时邮件、任务提醒在[路线图](#路线图)里。
+<p>
+  <img src=".github/assets/preview-dashboard.png" alt="SubsTracker 概览页面" />
+</p>
+<p>
+  <img src=".github/assets/preview-subscriptions.png" alt="SubsTracker 订阅管理页面" />
+</p>
+<p align="center">
+  <img src=".github/assets/preview-mobile.png" alt="SubsTracker 移动端深色主题" width="300" />
+</p>
 
-同一套 TypeScript 代码、两种运行时：既可以部署到 **Cloudflare Workers + KV**，也可以部署到**自己的 Node 服务器 + SQLite**。存储是可插拔的端口，不是写死的依赖。
+## 核心功能
 
-## 功能
+**订阅与支出总览**
+- 支持按天、月、年与农历周期（1900–2100）计费，处理月末日期对齐，并支持分类与试用期标记。
+- 支持多币种录入（`CNY`、`USD`、`HKD`、`TWD`、`JPY`、`EUR`、`GBP`、`KRW`、`TRY`）及按周期折算的月度支出估算。
+- 续期操作提供下一次到期日预览、支付记录留存及一键撤销。
 
-- **订阅管理**——名称、金额、币种、计费周期（天 / 月 / 年，另支持农历周期）、试用标记、分类、付款记录和带预览及撤销的续期。
-- **提醒规则引擎**——每个订阅可配多条规则：到期前 N 天/小时、到期当天或到期后按间隔重复。内置预设：提前 7 / 3 / 1 天 + 当天。
-- **全局默认规则可编辑**——新订阅继承的默认规则是正式配置项（`DEFAULT_REMINDER_RULES`），在设置页可改；清空成空集是明确选择，会被如实保存与生效。
-- **11 个通知渠道**——邮件、Telegram、企业微信、Bark、NotifyX、Server 酱、PushPlus、ntfy、Gotify、WPush、通用 Webhook。每个渠道有独立配置抽屉、启停开关，发送测试走真实管线。
-- **发送时段**——可限制只在选定的小时内发送（按配置时区）；为空表示不限制。
-- **日志与健康**——每次发送与每次调度都落日志、可筛选；每页顶部有健康状态（上次整点检查结果）。
-- **农历与财务**——农历周期订阅（1900–2100）、多币种金额与月度支出汇总。
-- **双运行时、存储可插拔**——Cloudflare KV / SQLite（`node:sqlite`）/ 内存三种实现，统一走 `StoragePort` 接口，带契约校验脚本。
+**提醒规则与渠道分发**
+- 每个订阅可独立配置多条规则（提前 N 天/小时、到期当天、到期后间隔重复），编辑时实时预测下次命中时间。
+- 全局默认提醒规则可在设置页编辑（`null` 回退内置 7/3/1 天 + 当天预设，`[]` 表示新建订阅默认不带规则）。
+- 支持按选定时区限制发送时段（`NOTIFICATION_HOURS`）；留空表示全天整点不限制发送。
+- 内置 11 个通知渠道（邮件 / Resend、Telegram、企业微信、Bark、NotifyX、Server 酱、PushPlus、ntfy、Gotify、WPush、通用 Webhook），支持凭据脱敏、测试发送和按来源分类的活动日志。
+
+**运维与数据可迁移**
+- 完整 JSON 备份导出与合并/覆盖恢复，配合自动数据结构迁移。
+- 提供 `/healthz` 健康检查、`/debug` 时区诊断页以及第三方通知触发接口（`/api/notify/:token`）。
 
 ## 快速开始
 
-### 路线 A — Cloudflare Workers
+### 方式一：Cloudflare Workers + KV
 
-前提：Node.js、Cloudflare 账号、Wrangler（用 `npx` 即可）。
-
-```bash
-npm install
-npm run deploy:safe   # 先建 KV 命名空间（scripts/setup-kv.cjs），再部署
-# 若 KV 已建好：
-npm run deploy
-```
-
-`wrangler.toml` 的入口是 `src/index.ts`，Wrangler 直接编译 TypeScript，无需预构建。调度由每小时一次的 Cron Trigger 驱动。
-配置脚本会保留已有 `SUBSCRIPTIONS_KV` ID 和其他 KV 绑定；遇到重复或无法识别的配置会停止，需先检查。
-
-### 路线 B — 自托管 Node 服务器
-
-前提：**Node.js 24**（SQLite 适配器用内置 `node:sqlite`）。
+前提条件：Node.js 24+、Cloudflare 账号与 Wrangler（通过 `npx` 调用即可）。
 
 ```bash
 npm install
-npm run build         # tsc → dist/（视图与 HTML loader 一并复制）
-npm start             # 可通过环境变量设置 PORT / HOST / SQLITE_PATH
+npm run deploy:safe   # 自动创建缺失的 SUBSCRIPTIONS_KV 命名空间并执行 wrangler deploy
 ```
 
-生产环境可直接用仓库自带的 systemd 单元 [`deploy/substracker.service`](deploy/substracker.service)（加固配置、`Restart=always`、读 `substracker.env`）。Node 组合根的调度对齐整点，并提供 `/healthz` 健康检查。
+- 后续更新仅需运行 `npm run deploy`。
+- `scripts/setup-kv.cjs` 会保留已有的 `SUBSCRIPTIONS_KV` 绑定，遇到冲突或无法识别的配置时中止并提示。
+- 调度由 `wrangler.toml` 中的每小时 Cron Trigger（`0 * * * *`）自动驱动。
+- 本地 Workers 调试：`npx wrangler dev --config wrangler.dev.toml`（使用 Miniflare 模拟 KV）。
 
-### 路线 C — Docker Compose
+### 方式二：自托管部署（Docker Compose 或 Node.js 24）
 
-执行 `docker compose up -d --build`，访问 `http://127.0.0.1:3200`。SQLite 保存在 `substracker-data` 卷；默认仅本机访问，远程访问请配置反向代理和 HTTPS。`docker compose down -v` 会删除该数据卷。
-
-### 首次登录
-
-用默认账号 **`admin` / `password`** 登录，立刻到**设置 → 账号安全**改密码。所有渠道凭据之后在**渠道**页里配——仓库里不存放任何密钥。
-
-## 配置
-
-运行时配置存在应用自己的存储里、在**设置**页编辑（Node 运行时另有少量进程级变量 `PORT`、`HOST`、`STORAGE_DRIVER`、`SQLITE_PATH`，放在 `substracker.env`）。关键项：
-
-| 配置项 | 说明 |
-| --- | --- |
-| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 管理员账号；首次登录后务必改密码。 |
-| `TIMEZONE` | 全部日期、倒计时与发送时段都按此时区解释（如 `Asia/Shanghai`）。只在设置页改，是全站唯一口径。 |
-| `APP_URL` | 本部署的公网地址。配置后，通知邮件会带「打开订阅管理」按钮。 |
-| `NOTIFICATION_HOURS` | 允许发送的小时，如 `["08","09","22"]`。**为空 = 不限制**（每个整点都可以发送）。在渠道页编辑。 |
-| `DEFAULT_REMINDER_RULES` | 新建订阅未自带规则时套用的规则模板。`null`（从未配置）回退内置预设（提前 7/3/1 天 + 当天）；空数组表示新订阅明确**不带**任何规则。 |
-| `THIRD_PARTY_API_TOKEN` | 第三方触发接口（`/api/thirdparty/notify`）的令牌。 |
-| 各渠道凭据 | 在渠道页逐个配置：邮件（`RESEND_API_KEY` + `EMAIL_FROM`/`EMAIL_TO`）、Telegram（`TG_BOT_TOKEN` + `TG_CHAT_ID`）、NotifyX（`NOTIFYX_API_KEY`）、企业微信（`WECHATBOT_WEBHOOK`）、Bark（`BARK_DEVICE_KEY`）、Server 酱（`SERVERCHAN_SENDKEY`）、PushPlus（`PUSHPLUS_TOKEN`）、ntfy（`NTFY_TOPIC`）、Gotify（`GOTIFY_SERVER_URL` + `GOTIFY_APP_TOKEN`）、WPush（`WPUSH_APIKEY`）、Webhook（`WEBHOOK_URL`）。只存于你的部署存储，绝不进仓库。 |
-
-`DEFAULT_REMINDER_RULES` 提交非法规则会整单拒绝（HTTP 400），已存值不变。
-
-## 提醒是怎么工作的
-
-1. **整点触发**——每小时跑一次调度（Workers 是 Cron Trigger，Node 是对齐整点的定时器）。
-2. **规则求值**——按配置时区，把每个活跃订阅的规则对其（下一次）到期日求值。
-3. **时段过滤**——`NOTIFICATION_HOURS` 非空且当前小时不在其中时，本次跳过发送。
-4. **分发**——到期的提醒经所有已启用渠道发出，通知标题以最紧急的订阅打头。
-5. **失败重试**——各渠道独立去重；失败渠道仅在之后规则仍命中且处于发送时段时重试。每天只允许一个发送时段时可能没有补发机会；多个调度器并发使用 KV 无法保证绝对不重复。
-6. **落日志**——发送与调度记录进活动页，按来源标注（调度规则 / `manual-test` / 渠道 `test` / `thirdparty`）。
-
-升级或跨运行时迁移前请导出备份。JSON 包含订阅、支付记录、规则及配置（可选密钥），不包含通知日志、调度日志和去重状态；迁移后当前窗口内的提醒可能再次发送。
-
-## 架构
-
-端口与适配器：业务逻辑只依赖抽象，两个入口都是薄组合根。
-
-- `src/index.ts`——Cloudflare Workers 组合根（KV 绑定本身即存储实现，零适配代码）。
-- `src/server.ts`——Node 组合根（`@hono/node-server`、静态视图、整点调度、优雅退出）。
-- `src/platform/storage/storage-port.ts`——`StoragePort` 接口（KV 常用子集：`get/put/delete/list` + TTL）；同目录有 `sqlite-storage.ts`、`memory-storage.ts` 两个适配器。用 `npm run check:storage` 校验任何适配器。
-- `src/views/`——五页（概览、订阅、渠道、活动、设置）加共享层 `theme-resources.html`（设计系统与 `window.ST` 运行时）。
-
-细节见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
-
-## 开发
+**Docker Compose**（SQLite 持久化在 `substracker-data` 数据卷）：
 
 ```bash
-npm run dev            # wrangler dev（Workers 运行时）
-npm run build          # 类型检查并构建 → dist/（Node 运行时）
-npm test               # vitest 测试套件
-npm run lint           # tsc --noEmit（strict）
-npm run check:storage  # 对 dist/ 跑存储适配器契约校验
-npm run check:server   # Node HTTP 与静态资源冒烟测试
-npm run check:setup    # KV 配置保留测试
-npm run check:ui       # 异步界面状态测试
+docker compose up -d --build
+# 浏览器访问 http://127.0.0.1:3200
 ```
 
-全仓 TypeScript `strict`——不用 `@ts-ignore`、不留隐式 `any`；改动以全量测试绿为准。
+> Compose 默认仅绑定 `127.0.0.1:3200`。如需公网访问，请在前方配置反向代理与 HTTPS。
+
+**Node.js 24 + SQLite**：
+
+```bash
+npm ci
+npm run build         # 编译 TypeScript 并复制视图与 HTML loader 到 dist/
+npm start             # 启动 dist/server.js，默认监听 http://127.0.0.1:3200
+```
+
+进程级环境变量（`PORT`、`HOST`、`STORAGE_DRIVER`、`SQLITE_PATH`、`SCHEDULER_ENABLED`）通过环境文件注入。生产环境可直接参考 [`deploy/substracker.service`](deploy/substracker.service) 与 [`deploy/substracker.env.example`](deploy/substracker.env.example)。
+
+### 首次登录与安全提示
+
+> **安全提醒：** 默认账号密码为 **`admin` / `password`**，首次登录后请立即前往 **设置 → 账号安全** 修改密码。所有通知渠道令牌与密钥均在 **渠道** 页面配置，仅保存在部署存储中，绝不写入仓库。
+
+## 关键配置
+
+运行时配置存储在应用数据库并在控制台界面修改：
+
+| 配置项 | 说明 | 配置位置 |
+| --- | --- | --- |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 管理员登录凭据与默认密码风险提示状态 | **设置 → 账号安全** |
+| `TIMEZONE` | 到期倒计时、提醒求值与发送时段的唯一时区基准（如 `Asia/Shanghai`） | **设置** |
+| `NOTIFICATION_HOURS` | 允许在 `TIMEZONE` 下发送的小时列表（如 `["08","21"]`）；**为空表示不限制** | **渠道** |
+| `DEFAULT_REMINDER_RULES` | 新建订阅未指定规则时复制的模板（`[]` 不赋规则；非法规则整体返回 `400`） | **设置** |
+| `APP_URL` / `THIRD_PARTY_API_TOKEN` | 邮件通知跳转链接前缀及第三方接口 `/api/notify/:token` 鉴权令牌 | **设置** |
+| 渠道凭据 | 全部 11 个通知渠道的参数与密钥（读取接口统一脱敏展示） | **渠道** |
+
+<details>
+<summary>整点调度、失败重试与备份边界说明</summary>
+
+1. 调度器每小时执行一次（Workers Cron Trigger 或 Node 整点对齐定时器），按 `TIMEZONE` 对活跃订阅逐条求值规则。
+2. 当 `NOTIFICATION_HOURS` 非空且当前本地小时不在其中时，本次跳过发送。
+3. 每个已启用渠道独立记录去重状态；失败渠道仅在后续整点仍命中规则且处于发送时段内才重试。由于 Cloudflare KV 不提供跨实例原子事务，多实例并发调度无法承诺严格一次发送。
+4. 备份 JSON 包含订阅、付款历史、提醒规则与配置（密钥可选导出），不包含通知日志、调度日志和去重状态；跨环境迁移后命中当前窗口的提醒可能会重新发送一次。
+
+</details>
+
+## 架构概览
+
+项目采用端口与适配器模式（Ports & Adapters），让同一套严格类型的 Hono 应用无差别运行在 Cloudflare Workers 与 Node.js 24：
+
+```mermaid
+flowchart LR
+  W["src/index.ts（Workers + Cron）"] --> APP["src/app.ts（Hono 应用与中间件）"]
+  N["src/server.ts（Node.js 24 + serveStatic）"] --> APP
+  APP --> API["src/api 与 src/services（规则引擎 / 调度 / 11 渠道）"]
+  API --> PORT["StoragePort（get / put / delete / list）"]
+  PORT --> KV["Cloudflare KV"]
+  PORT --> SQLITE["SQLite（node:sqlite）"]
+  PORT --> MEM["Memory（测试调试）"]
+```
+
+关于 `StoragePort` 接口、数据迁移、通知日志 `ruleId` 约定与双运行时视图加载细节，请阅读 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+
+## 本地开发
+
+前置环境：**Node.js 24+**。
+
+```bash
+npm install
+npm run lint           # tsc --noEmit（strict 模式，0 错误）
+npm test               # 在 Cloudflare workerd 运行时内运行 Vitest 测试套件
+npm run build          # 构建 Node 运行时产物到 dist/
+npm run check:storage  # 对构建产物 dist/ 校验 StoragePort 适配器契约
+npm run check:server   # Node + SQLite 启动、页面与静态资源冒烟检查
+npm run check:setup    # Wrangler KV 自动配置脚本保护测试
+npm run check:ui       # 前端异步状态与竞态单测
+```
+
+代码硬性约束与已知陷阱详见 [AGENTS.md](AGENTS.md)。
 
 ## 路线图
 
-SubsTracker 正按小步、可独立发布的节奏，从订阅通知演进为上述定时触发平台：
+- **已实现：** 双运行时单代码库（`Workers + KV` / `Node.js 24 + SQLite`）、`StoragePort` 存储抽象、支持实时预测的提醒规则引擎、11 个通知渠道、JSON 备份与恢复。
+- **计划中：** 渠道插件注册表与基于 schema 的动态配置抽屉、拆分定时触发内核以支持更多提醒源（如定时邮件与任务提醒）。
 
-1. **渠道注册表化**——11 个渠道补 manifest 并建注册表，分发改走注册表。（计划中）
-2. **内核拆分**——调度拆为触发内核 `runTick` + 订阅插件的求值器。（计划中）
-3. **管线升格**——执行器升为（事件，绑定）模型，渠道适配器包装成动作插件。（计划中）
-4. **设置 schema 化**——渠道抽屉改由配置 schema 生成。（计划中；现有抽屉是其手写原型）
-5. **定时邮件插件**——第一个声明式触发源：草稿、定时发送、`send-mail` 动作。（计划中）
-6. **任务提醒插件**——第二个声明式触发源，复用偏移/规则编辑器。（计划中）
-7. **活动日志通用化**——按来源插件筛选。（可选，最后做）
+## 致谢与许可证
 
-已落地的地基：双运行时单代码库、存储可插拔、结构化通知载荷、全局默认规则可编辑。
-
-## 致谢
-
-Fork 自 [wangwangit/SubsTracker](https://github.com/wangwangit/SubsTracker)。v3 界面的设计语言借鉴了 Meta 的 Astryx 设计系统与 Craft 的玻璃质感。
-
-## 许可证
-
-[MIT](LICENSE)
+- Fork 自 [wangwangit/SubsTracker](https://github.com/wangwangit/SubsTracker)。
+- 基于 [MIT License](LICENSE) 开源（`Copyright (c) 2025 一只会飞的旺旺`）。
